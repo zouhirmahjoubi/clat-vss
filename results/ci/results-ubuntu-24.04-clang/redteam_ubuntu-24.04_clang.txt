@@ -1,0 +1,10 @@
+== CLAT-VSS v2 red-team lab ==
+[A1] v1 LWE-leak port: words=180000 mean|dist-to-kD|=8192.1 (random~8192) mean(ct-msg)=1.073e+09 P(dist<=4)=2.72e-04 (random~2.75e-04) -> no small-error structure (attack fails)
+[A2] transcript hiding (0 shares): 100000/100000 random KEK candidates consistent with published g_k(0) -> secret unrecoverable (perfect hiding)
+[A3] integral distinguisher: R=2,d=31 HOLDS ; R=3,d=31 breaks(control) ; R=3,d=151 HOLDS ; R=4,d=151 breaks(control)
+[A3] full cipher R=24: 5^24=5.960e+16 > q-1=2147483646 and max proper divisor of q-1 is (q-1)/2=1073741823 < 5^24 -> no usable subgroup; distinguisher infeasible
+[A6] consistent forgery: passes g-check? YES ; passes full verify (commitment)? no -> commitment binds (forgery fails)
+[A5] randomness: salts across two deals identical? no ; share-mask shares identical across two maskings? no ; both unmask to same value? yes -> fresh OS entropy (v1 break closed)
+[A4] SIV forgery: single-bit-flip blobs accepted 0/713 ; random forgeries accepted 0/300000 ; total accepts 0 (tag is 217 bits; expected forgery prob ~2^-217) -> no forgery (attack fails)
+
+== red-team summary: 0 attack(s) succeeded ==

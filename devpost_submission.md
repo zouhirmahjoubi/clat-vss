@@ -4,7 +4,8 @@ CLAT-VSS v2 is a threshold key vault written in one C file. It replaces our firs
 
 **Track:** Cryptographer Track (Track 1), Mathematics for Systems Security
 **Language:** C11, single file, no crypto libraries. Builds with `gcc -std=c11 -O3 -Wall -Wextra -Werror -pedantic`.
-**Paper:** `paper/clat_vss_v2.pdf` (11 pages, LaTeX)
+**Paper:** `paper/clat_vss_v2.pdf` (LaTeX)
+**Code:** https://github.com/zouhirmahjoubi/clat-vss
 
 ## Inspiration
 
@@ -79,6 +80,8 @@ The program prints every number below at run time. The machine was an Intel i5-6
 | Degree test, rounds 1 to 7 | the integral sum holds whenever the subgroup size is above 5^R, and fails as expected when it is not |
 | dudect timing, 10^5 runs | largest abs(t) is 1.71 for the permutation and 0.49 for masked unwrap (threshold 4.5) |
 | Simulated power leakage (TVLA) | unmasked code leaks at 7170 points; the three masked code paths leak at 0 |
+| Platforms | 38 of 38 on Windows (GCC), Ubuntu (GCC and Clang) and macOS arm64 (Apple Clang) |
+| Sanitizers | no reports under AddressSanitizer and UndefinedBehaviorSanitizer |
 | Masked check of 5 shares | 2.27 ms |
 | Masked reconstruct and unwrap | 0.38 ms |
 
@@ -113,13 +116,13 @@ gcc -std=c11 -O3 -Wall -Wextra -Werror -pedantic clat_vss.c -lm -o clat_vss
 ./clat_vss
 ```
 
-The default run takes 1 to 2 minutes. `./clat_vss --full` runs longer timing and leakage tests. Both exit with a non-zero status if any functional check fails.
+GitHub Actions runs the same build and suite on Ubuntu and macOS on every push. The default run takes 1 to 2 minutes. `./clat_vss --full` runs longer timing and leakage tests. Both exit with a non-zero status if any functional check fails.
 
 ## Limitations
 
 - CLAT-P is a new design and has not had outside cryptanalysis.
 - Power leakage is simulated in two models and has not been measured on hardware. The masking protects against first-order attacks only.
-- We built and ran it on Windows only. The Linux and macOS code paths are untested.
+- The Linux and macOS timing tests ran on shared CI machines, so their timing figures are noisier than the laptop run.
 - The secret sharing assumes every custodian sees the same public transcript.
 - A dealer with a quantum computer could use Grover search to cheat in about 2^78 tries instead of 2^155. Using 9 mask polynomials instead of 5 would restore about 2^139.
 

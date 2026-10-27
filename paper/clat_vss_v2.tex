@@ -46,8 +46,12 @@ CLAT-VSS is a threshold key vault. A master key (MK) is wrapped under a key-encr
 
 Version 2 removes every one of these components and rebuilds the vault on one public object: \emph{CLAT-P}, a 24-round, full-round substitution-permutation network on $\Fq^{16}$ with $q = 2^{31}-1$, the S-box $x^5$, and a $16\times16$ Cauchy MDS matrix. A sponge over CLAT-P provides hashing, commitments, Fiat-Shamir challenges and a deterministic authenticated key wrap (CLAT-SIV). The VSS uses only hash commitments, so it needs no discrete-log assumption, and its soundness error is $q^{-5} \approx 2^{-155}$ per challenge query. The combiner runs end to end on 2-share arithmetic masking with ISW multiplication and OS randomness.
 
-The single-file C11 implementation (2782 lines, no dependencies beyond the C standard library, with \code{libm} for test statistics, and the OS random source) passes 38 of 38 functional checks and 7 of 7 statistical tests. These include the dudect timing test (max $\abs{t} = 1.71$ for CLAT-P and $0.49$ for the masked unwrap), a simulated-leakage TVLA in value and transition models (0 leaking samples on the masked paths, 7170 on the unmasked control), and degree-growth tests that reproduce the integral property on reduced rounds and show why it fails at full rounds. A separate red-team harness ran five attacks and one hiding check against v2; no attack succeeded. Every experimental number in this paper is produced by the shipped code; the v1 breaks and the security bounds are derived analytically.
+The single-file C11 implementation (2792 lines, no dependencies beyond the C standard library, with \code{libm} for test statistics, and the OS random source) passes 38 of 38 functional checks and 7 of 7 statistical tests on Windows, Linux and macOS (arm64), and runs with no report under AddressSanitizer and UndefinedBehaviorSanitizer. These include the dudect timing test (max $\abs{t} = 1.71$ for CLAT-P and $0.49$ for the masked unwrap), a simulated-leakage TVLA in value and transition models (0 leaking samples on the masked paths, 7170 on the unmasked control), and degree-growth tests that reproduce the integral property on reduced rounds and show why it fails at full rounds. A separate red-team harness ran five attacks and one hiding check against v2; no attack succeeded. Every experimental number in this paper is produced by the shipped code; the v1 breaks and the security bounds are derived analytically.
 \end{abstract}
+
+\begin{center}\small
+Source code, CI workflow and run logs: \url{https://github.com/zouhirmahjoubi/clat-vss}
+\end{center}
 
 \section{Introduction}
 
@@ -317,7 +321,7 @@ The tag comparison unmasks $\rho_j(\text{tag}'_j - \text{tag}_j)$ with a fresh n
 
 \section{Implementation and attack surface}\label{sec:impl}
 
-The implementation is one C11 file, \code{clat\_vss.c} (2782 lines including the test suite). It depends only on libc, \code{libm} for test statistics, and the OS random source (\code{getrandom}, \code{getentropy}, or \code{RtlGenRandom}). It builds with \code{gcc -std=c11 -O3 -Wall -Wextra -Werror -pedantic} and no warnings. Measures that shrink the attack surface:
+The implementation is one C11 file, \code{clat\_vss.c} (2792 lines including the test suite). It depends only on libc, \code{libm} for test statistics, and the OS random source (\code{getrandom}, \code{getentropy}, or \code{RtlGenRandom}). It builds with \code{-std=c11 -O3 -Wall -Wextra -Werror -pedantic} and no warnings under GCC 16.2 (MinGW-w64), GCC 13.3 and Clang 18.1 (Ubuntu 24.04), and Apple Clang 15 (macOS 14, arm64). Measures that shrink the attack surface:
 
 \begin{itemize}
   \item \textbf{One primitive.} Hashing, commitments, challenges, MAC and keystream all use CLAT-P. There are no tables indexed by secrets, no key schedule and no second cipher.
@@ -337,10 +341,29 @@ The implementation is one C11 file, \code{clat\_vss.c} (2782 lines including the
 
 \section{Evaluation}\label{sec:eval}
 
-All results come from one run of \code{./clat\_vss} (\code{results/v2\_run\_verify.txt}) on an Intel Core i5-6300U at 2.40~GHz under Windows 10, built with GCC 16.2.0 (WinLibs, UCRT) at \code{-O3}. The run took 84.6~s and exited with status 0.
+All results come from one run of \code{./clat\_vss} (\code{results/v2\_run\_verify.txt}) on an Intel Core i5-6300U at 2.40~GHz under Windows 10, built with GCC 16.2.0 (WinLibs, UCRT) at \code{-O3}. The run took 84.6~s and exited with status 0. Table~\ref{tab:platforms} repeats the suite on Linux and macOS.
 
 \paragraph{Known answers.}
 Three known answers are fixed: $\perm(0,1,\dots,15)$ begins \code{5f0d27c8 4a31df17}, $\Hash(3;\varnothing)$ begins \code{0fcb86a3 77e744d8}, and the SIV blob for a fixed key and nonce has a ciphertext beginning \code{47d31d57} and a tag beginning \code{67266edd}. An independent Python implementation written from the specification (\code{tools/ref\_kat.py}) reproduces all three.
+
+\paragraph{Cross-platform runs.}
+The same source was built with the flags above and run by GitHub Actions on Ubuntu 24.04 (x86-64) with GCC and Clang, on macOS 14 (arm64) with Apple Clang, and on Ubuntu with GCC under AddressSanitizer and UndefinedBehaviorSanitizer (Table~\ref{tab:platforms}). Each run uses that platform's OS random source. The three known answers match on every platform. CI also diffs the Python reference output against the recorded values. The logs are in \code{results/ci/}.
+
+\begin{table}[t]
+\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lllllcc@{}}
+\toprule
+Platform & Compiler & OS RNG & Timer & dudect $\abs{t}$ & Functional & Statistical\\
+\midrule
+Windows 10, x86-64 & GCC 16.2.0 & \code{RtlGenRandom} & \code{rdtsc} & 1.71 / 0.49 & 38/38 & 7/7\\
+Ubuntu 24.04, x86-64 (CI) & GCC 13.3.0 & \code{getrandom} & \code{rdtsc} & 0.91 / 1.51 & 38/38 & 7/7\\
+Ubuntu 24.04, x86-64 (CI) & Clang 18.1.3 & \code{getrandom} & \code{rdtsc} & 2.01 / 0.66 & 38/38 & 7/7\\
+macOS 14, arm64 (CI) & Apple Clang 15.0.0 & \code{getentropy} & \code{clock\_gettime} & 1.12 / 1.85 & 38/38 & 7/7\\
+Ubuntu 24.04, ASan + UBSan & GCC 13.3.0, \code{-O1} & \code{getrandom} & \code{rdtsc} & 1.71 / 1.69 & 36/36$^{*}$ & 7/7\\
+\bottomrule
+\end{tabular}
+\caption{The suite on four configurations. The dudect column gives CLAT-P / masked unwrap. In every run the red-team harness reports 0 successful attacks. $^{*}$The sanitizer build skips the two dead-stack probes, because ASan's redzones change the stack layout they measure; the run produced no sanitizer report.}\label{tab:platforms}
+\end{table}
 
 \paragraph{Vault demonstration (3-of-5).}
 All 18 vault checks pass.
@@ -381,7 +404,7 @@ We use fixed-versus-random classes, random interleaving, $10^5$ measurements per
 \paragraph{Simulated leakage (TVLA).}
 Each value the traced code stores (S-box and gadget intermediates, folded MDS products and outputs, absorbed sponge words, the Lagrange and $g$-check accumulators, keystream and tag-comparison words) passes through a hook that records its Hamming weight (HW, value model) and its Hamming distance to the previous value (HD, transition model). We run the fixed-versus-random $t$-test per sample on two independent data sets~\cite{tvla}. A sample counts as leaking only if $\abs{t} > 4.5$ in both sets.
 
-Under the null hypothesis $\Pr[\abs{t} > 4.5] \approx 6.8\times10^{-6}$, so 170{,}836 samples give about 1.2 chance exceedances per set. The isolated single-set hits in Table~\ref{tab:tvla} match that rate. The unmasked control leaks at 7170 (HW) and 7070 (HD) samples, which shows the test can detect leakage. The masked targets show 0. This is a simulation of the trace order in a value and a transition model. It is not a measurement of real hardware (Section~\ref{sec:limits}).
+Under the null hypothesis $\Pr[\abs{t} > 4.5] \approx 6.8\times10^{-6}$, so 170{,}836 samples give about 1.2 chance exceedances per set. The isolated single-set hits in Table~\ref{tab:tvla} match that rate. The unmasked control leaks at 7170 (HW) and 7070 (HD) samples, which shows the test can detect leakage. The masked targets show 0. The long mode (\code{--full}, run in CI on Ubuntu with GCC) uses more traces: $2\times10^5$ for masked CLAT-P, and $2\times2\times10^4$ for the unmasked control, combine and verify. With 10 times more traces, the unmasked control's largest $\abs{t}$ grows from about 120 to 412.47, close to the $\sqrt{10}$ growth expected from a real leak, while the masked maximum stays at 4.15 (HD) and every masked target again has 0 confirmed samples. The same run passes dudect with $10^6$ (CLAT-P, max $\abs{t} = 1.36$) and $4\times10^5$ (masked unwrap, max $\abs{t} = 1.04$) measurements and all 38 functional checks. This is a simulation of the trace order in a value and a transition model. It is not a measurement of real hardware (Section~\ref{sec:limits}).
 
 \begin{table}[t]
 \centering\footnotesize\setlength{\tabcolsep}{4pt}
@@ -455,7 +478,7 @@ PRNG, Golomb postulates & statistics are not security & sanity tests labelled as
 \begin{itemize}
   \item \textbf{No external cryptanalysis.} CLAT-P is new. Its round count rests on the degree and trail arguments above and on the comparison with Poseidon2, not on years of public analysis. Gr\"obner-basis attacks are covered only through that comparison.
   \item \textbf{Leakage is simulated.} The TVLA models the trace order in HW and HD models. Real power or EM traces can leak through register reuse, glitches and coupling that the model does not capture. The masking is first-order only.
-  \item \textbf{One platform.} Only Windows with MinGW-w64 GCC was built and run. The Linux (\code{getrandom}) and BSD/macOS (\code{getentropy}) paths are guarded by preprocessor conditions but untested. dudect results come from one laptop.
+  \item \textbf{Timing platforms.} The suite passes on Windows, Linux and macOS (Table~\ref{tab:platforms}). The Linux and macOS timing tests ran on shared CI virtual machines, and the arm64 run uses \code{clock\_gettime} instead of a cycle counter, so those dudect figures are coarser than the laptop run. BSD, which shares the \code{getentropy} path with macOS, was not tested separately.
   \item \textbf{Threads.} The mask buffer is process-wide and unlocked, so callers must not run the masked entry points from two threads at once.
   \item \textbf{Quantum dealer.} Shor's algorithm does not apply to the VSS, but Grover search lets a quantum dealer find a passing challenge in about $q^{5/2} \approx 2^{78}$ queries. Raising the number of masking polynomials from 5 to 9 would restore about $2^{139}$.
   \item \textbf{Broadcast.} The VSS assumes all custodians see the same transcript. The protocol does not include a complaint round.

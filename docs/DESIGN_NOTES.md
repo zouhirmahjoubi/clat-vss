@@ -83,3 +83,9 @@ Neso Academy "Cryptography & Network Security" (83 videos, PLBlnK6fEyqRgJU3EsOYD
   Q hash queries: Q q^-5 + collision term Q^2 / 2^279. Hiding: T-1 shares + g_k reveal per k one equation
   g_k(0) = r_k(0) + sum_l d_kl s_l, masked by uniform r_k(0); commitments hide via 279-bit salt (ROM). Assumes broadcast.
 - Next: COURSE_NOTES.md, paper/clat_vss_v2.tex (Tectonic), devpost_submission.md + video script, adams check, review workflow.
+
+## Cross-platform verification 2026-10-27
+- Public repo https://github.com/zouhirmahjoubi/clat-vss (private Actions blocked by account billing; user chose public).
+- CI run 40431131292 (push) and 40432440336 (dispatch, --full): Ubuntu 24.04 gcc 13.3 and clang 18.1, macOS 14 arm64 Apple Clang 15: 38/38, 7/7, red team 0 succeeded, KATs match, Python KAT diff clean.
+- ASan+UBSan (gcc 13.3 -O1): 36/36 (dead-stack probes skipped under ASan), 7/7, no sanitizer report.
+- --full on Ubuntu gcc: 38/38, 7/7, dudect 1e6 / 4e5 max |t| 1.36 / 1.04, TVLA masked max 4.15 at 1e5 traces/set, unmasked 412. Logs in results/ci/.
