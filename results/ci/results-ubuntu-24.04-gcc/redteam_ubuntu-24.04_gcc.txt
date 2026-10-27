@@ -1,10 +1,14 @@
 == CLAT-VSS v2 red-team lab ==
-[A1] v1 LWE-leak port: words=180000 mean|dist-to-kD|=8199.0 (random~8192) mean(ct-msg)=1.072e+09 P(dist<=4)=2.89e-04 (random~2.75e-04) -> no small-error structure (attack fails)
+[A1] v1 LWE-leak port: words=180000 mean|dist-to-kD|=8183.4 (random~8192) mean(ct-msg)=1.073e+09 P(dist<=4)=2.94e-04 (random~2.75e-04) -> no small-error structure (attack fails)
 [A2] transcript hiding (0 shares): 100000/100000 random KEK candidates consistent with published g_k(0) -> secret unrecoverable (perfect hiding)
 [A3] integral distinguisher: R=2,d=31 HOLDS ; R=3,d=31 breaks(control) ; R=3,d=151 HOLDS ; R=4,d=151 breaks(control)
 [A3] full cipher R=24: 5^24=5.960e+16 > q-1=2147483646 and max proper divisor of q-1 is (q-1)/2=1073741823 < 5^24 -> no usable subgroup; distinguisher infeasible
 [A6] consistent forgery: passes g-check? YES ; passes full verify (commitment)? no -> commitment binds (forgery fails)
 [A5] randomness: salts across two deals identical? no ; share-mask shares identical across two maskings? no ; both unmask to same value? yes -> fresh OS entropy (v1 break closed)
+[A8] two-time pad: fixed-IV control leaks m1-m2 in 180000/180000 words ; CLAT-SIV with reused nonce leaks it in 0/180000 (random ~8.4e-05) ; equal messages give equal blobs 20000/20000 -> nonce reuse leaks equality only
+[A9] PRG advantage of SIV keystream over 200000 samples: parity 0.0013 ; half-range 0.0018 ; linear w1=7*w0 0.0000 (bound 0.0089) ; linear control advantage 1.0000 -> no test distinguishes (sanity, not proof)
+[A10] complaint round: cheating dealer stayed qualified in 0/100000 forged openings ; honest dealer survives T-1 = 2 false complaints? yes -> dealer cheating is caught and named
+[A7] generic birthday on 20-bit truncated CLAT-H: mean hashes to collision 1278 over 256 trials (generic sqrt(pi/2*2^20)=1283, ratio 0.996) ; full 279-bit collisions 0 -> matches generic bound (no shortcut) ; full digest needs ~2^139.5 work
 [A4] SIV forgery: single-bit-flip blobs accepted 0/713 ; random forgeries accepted 0/300000 ; total accepts 0 (tag is 217 bits; expected forgery prob ~2^-217) -> no forgery (attack fails)
 
 == red-team summary: 0 attack(s) succeeded ==

@@ -68,23 +68,23 @@ For comparison, Poseidon2 over 31-bit fields, with width 16 and x^5, uses 8 full
 
 ## Results
 
-The program prints every number below at run time. The machine was an Intel i5-6300U running Windows 10, built with GCC 16.2.0.
+The program prints every number below at run time. The machine was an Intel i5-6300U running Windows 10, built with GCC 16.2.0 (`results/v2_run_complaint.txt`).
 
 | Test | Result |
 |---|---|
-| Functional checks | 44 of 44 pass with the complaint round (Windows); 38 of 38 before it |
+| Functional checks | 44 of 44 pass |
 | Statistical tests | 7 of 7 pass |
 | Known answers | match an independent Python implementation (`tools/ref_kat.py`) |
 | Cauchy MDS minors | 256/256 1x1, 14400/14400 2x2 and 10000/10000 random kxk are nonsingular |
 | 3-of-5 vault | all 10 three-custodian subsets open it; none of the 10 two-custodian subsets do |
 | v1-style forged share | passes the polynomial check, rejected by the hash commitment |
 | Degree test, rounds 1 to 7 | the integral sum holds whenever the subgroup size is above 5^R, and fails as expected when it is not |
-| dudect timing, 10^5 runs | largest abs(t) is 1.71 for the permutation and 0.49 for masked unwrap (threshold 4.5) |
-| Simulated power leakage (TVLA) | unmasked code leaks at 7170 points; the three masked code paths leak at 0 |
-| Platforms | 38 of 38 on Windows (GCC), Ubuntu (GCC and Clang) and macOS arm64 (Apple Clang), before the complaint round |
+| dudect timing, 10^5 runs | largest abs(t) is 1.05 for the permutation and 1.32 for masked unwrap (threshold 4.5) |
+| Simulated power leakage (TVLA) | unmasked code leaks at 7113 points; the three masked code paths leak at 0 |
+| Platforms | 44 of 44 on Windows (GCC), Ubuntu (GCC and Clang) and macOS arm64 (Apple Clang) |
 | Sanitizers | no reports under AddressSanitizer and UndefinedBehaviorSanitizer |
-| Masked check of 5 shares | 2.27 ms |
-| Masked reconstruct and unwrap | 0.38 ms |
+| Masked check of 5 shares | 1.89 ms |
+| Masked reconstruct and unwrap | 0.24 ms |
 
 **Red team.** A separate harness (`attacks/redteam_v2.c`) attacks v2 directly. All nine attacks failed, and a tenth check confirms the hiding property.
 

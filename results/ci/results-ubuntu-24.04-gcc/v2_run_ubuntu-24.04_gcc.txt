@@ -31,7 +31,7 @@ CLAT-VSS v2 test suite (default mode)
   [PASS] masked SIV unwrap == unmasked unwrap on 20 blobs (10 valid, 10 forged tags)
   [PASS] 256-bit key <-> 9 limbs round-trips 1000 keys; non-canonical limbs rejected
   [PASS] secure_zeroize on a dead buffer survives optimisation: longest 0xA5 run left = 0 bytes (control, plain memset: 256 bytes)
-  [PASS] dead stack after clat_siv_wrap: 0 nonzero bytes of 2048 (control without the burn: 251 nonzero bytes)
+  [PASS] dead stack after clat_siv_wrap: 0 nonzero bytes of 2048 (control without the burn: 252 nonzero bytes)
   (0.08 s)
 
 == Test 3: threshold key vault demo (3-of-5) ==
@@ -40,7 +40,7 @@ CLAT-VSS v2 test suite (default mode)
   [PASS] all 5 shares verify against the header's 3-of-5 policy (unmasked reference verifier, dealer / custodian side)
   [PASS] combiner: all 5 split shares verify on the masked path (2.03 ms total)
   [PASS] masked Lagrange at 0 from custodians {2,4,5} yields the KEK
-  [PASS] masked SIV unwrap returns MK as 2 shares; joined MK matches (0.38 ms reconstruct + unwrap)
+  [PASS] masked SIV unwrap returns MK as 2 shares; joined MK matches (0.39 ms reconstruct + unwrap)
   [PASS] recovered MK bytes equal the original 32 bytes
   [PASS] 10/10 three-custodian subsets recover the KEK; 0/10 two-custodian subsets do
   [PASS] 1-bit flip in custodian 4's share rejected (failure mask 0x10 names custodian 4; masked verifier agrees)
@@ -48,6 +48,12 @@ CLAT-VSS v2 test suite (default mode)
   [PASS] the forged share is rejected by its commitment (failure mask 0x04)
   [PASS] if used anyway, the forged share gives a wrong KEK: unwrap fails, output wiped
   [PASS] dealer's off-polynomial share for custodian 3 caught by the g-check (its commitment matches; failure mask 0x08)
+  [PASS] complaint round: no custodian complains about an honest dealer, who stays qualified
+  [PASS] custodian 3 complains; the dealer opens the committed bad share and is disqualified
+  [PASS] a substituted on-polynomial opening fails the commitment, and silence also disqualifies the dealer
+  [PASS] a false complaint against an honest dealer: the opening passes, the dealer stays qualified, and custodian 2 keeps a valid share
+  [PASS] T-1 = 2 complaints are answered; T = 3 complaints disqualify the dealer instead of opening enough shares to reveal the KEK
+  [PASS] a repeated complainer or an index outside 1..N is rejected as a malformed complaint list
     ciphertext modified: rejected, output wiped
     tag        modified: rejected, output wiped
     nonce      modified: rejected, output wiped
@@ -83,55 +89,55 @@ CLAT-VSS v2 test suite (default mode)
     timer: rdtsc with lfence
     (a) CLAT-P, 100000 measurements
       crop   n(fixed)  n(random)  mean fixed  mean random        t
-      100%      50031      49969     15697.4      15695.7     0.09
-       99%      49560      49460     15508.5      15497.7     0.91
-       95%      47528      47478     15156.1      15152.9     0.62
-       90%      45126      45089     15015.0      15015.0     0.00
-       75%      39526      39493     14998.6      14998.5     0.14
-       50%      27061      27052     14967.7      14967.4     0.65
-  [PASS] dudect CLAT-P: max |t| = 0.91 (threshold 4.5) (statistical)
+      100%      50240      49760     15214.5      15231.1    -1.28
+       99%      49763      49243     15049.5      15049.6    -0.00
+       95%      47766      47246     15015.1      15014.8     0.76
+       90%      45961      45547     15010.2      15010.1     0.25
+       75%      38342      37925     14991.8      14991.5     0.74
+       50%      25255      25136     14963.7      14963.7     0.03
+  [PASS] dudect CLAT-P: max |t| = 1.28 (threshold 4.5) (statistical)
     (b) masked SIV unwrap, 100000 measurements
       crop   n(fixed)  n(random)  mean fixed  mean random        t
-      100%      50076      49924    950943.7     950743.7     1.51
-       99%      49540      49460    949494.5     949416.6     1.09
-       95%      47520      47486    948403.7     948362.0     0.65
-       90%      45033      45016    947523.6     947484.7     0.62
-       75%      37558      37510    944695.5     944634.8     1.09
-       50%      25000      25047    940303.2     940310.7    -0.67
-  [PASS] fixed-class key opened the blob 50076/50076 times; random keys opened it 0/49924 times
-  [PASS] dudect masked unwrap: max |t| = 1.51 (threshold 4.5) (statistical)
-  (39.61 s)
+      100%      49886      50114    950269.2     950000.1     1.14
+       99%      49386      49614    947960.9     947896.9     0.82
+       95%      47429      47573    946586.6     946454.6     2.01
+       90%      44949      45051    945693.2     945543.6     2.34
+       75%      37385      37650    942797.7     942700.2     1.71
+       50%      24852      25186    938353.4     938348.8     0.55
+  [PASS] fixed-class key opened the blob 49886/49886 times; random keys opened it 0/50114 times
+  [PASS] dudect masked unwrap: max |t| = 2.34 (threshold 4.5) (statistical)
+  (39.56 s)
 
 == Test 6: simulated-leakage TVLA (HW value model and HD transition model) ==
     unmasked   8080 samples/trace, 2 sets x 2000 traces  (0.2 s)
-             HW: max|t| = 110.88 / 119.14, samples over 4.5: 7330 / 7319, in both sets: 7190
-             HD: max|t| = 120.97 / 123.24, samples over 4.5: 7169 / 7187, in both sets: 7124
-    masked    28448 samples/trace, 2 sets x 10000 traces  (3.6 s)
-             HW: max|t| = 3.91 / 4.06, samples over 4.5: 0 / 0, in both sets: 0
-             HD: max|t| = 4.42 / 4.16, samples over 4.5: 0 / 0, in both sets: 0
+             HW: max|t| = 113.95 / 120.10, samples over 4.5: 7250 / 7289, in both sets: 7138
+             HD: max|t| = 128.74 / 127.43, samples over 4.5: 7201 / 7212, in both sets: 7146
+    masked    28448 samples/trace, 2 sets x 10000 traces  (3.7 s)
+             HW: max|t| = 4.53 / 3.71, samples over 4.5: 1 / 0, in both sets: 0
+             HD: max|t| = 4.54 / 4.38, samples over 4.5: 1 / 0, in both sets: 0
     combine  170835 samples/trace, 2 sets x 3000 traces  (9.1 s)
-             HW: max|t| = 4.56 / 4.56, samples over 4.5: 1 / 1, in both sets: 0
-             HD: max|t| = 4.28 / 4.90, samples over 4.5: 0 / 2, in both sets: 0
-    verify   170836 samples/trace, 2 sets x 3000 traces  (8.5 s)
-             HW: max|t| = 4.57 / 4.57, samples over 4.5: 1 / 1, in both sets: 0
-             HD: max|t| = 4.68 / 4.52, samples over 4.5: 1 / 1, in both sets: 0
-  [PASS] unmasked CLAT-P leaks at 7190 (HW) / 7124 (HD) samples (the test detects leakage)
+             HW: max|t| = 4.51 / 4.97, samples over 4.5: 1 / 3, in both sets: 0
+             HD: max|t| = 4.80 / 4.76, samples over 4.5: 1 / 1, in both sets: 0
+    verify   170836 samples/trace, 2 sets x 3000 traces  (8.4 s)
+             HW: max|t| = 4.94 / 4.32, samples over 4.5: 1 / 0, in both sets: 0
+             HD: max|t| = 4.35 / 4.67, samples over 4.5: 0 / 1, in both sets: 0
+  [PASS] unmasked CLAT-P leaks at 7138 (HW) / 7146 (HD) samples (the test detects leakage)
   [PASS] every traced combine and verify operation succeeded (0 failures in 12000 traces)
   [PASS] masked: 0 (HW) / 0 (HD) samples leak at first order in the simulated HW and HD models (statistical)
   [PASS] combine: 0 (HW) / 0 (HD) samples leak at first order in the simulated HW and HD models (statistical)
   [PASS] verify: 0 (HW) / 0 (HD) samples leak at first order in the simulated HW and HD models (statistical)
-  (21.31 s)
+  (21.39 s)
 
 == Test 7: statistical sanity checks (sanity, not proof) ==
     SAC: 200 trials x 496 input bits (0 skipped), 496 output bits
-         mean flip rate 0.499908 (z = -1.29), max per-cell |z| = 4.95, cells with |z| > 5: 0 of 246016
-  [PASS] SAC: |z| of mean flip rate 1.29 < 5 and max per-cell |z| 4.95 < 6 (statistical)
+         mean flip rate 0.500037 (z = 0.52), max per-cell |z| = 4.53, cells with |z| > 5: 0 of 246016
+  [PASS] SAC: |z| of mean flip rate 0.52 < 5 and max per-cell |z| 4.53 < 6 (statistical)
     bit balance: 131072 words, max |z| over 31 bit positions = 2.24
     bytes: 507904, Shannon entropy = 7.99961 bits/byte, chi^2(255) = 277.3 (0.9999 quantile 347.7)
   [PASS] bit balance max |z| 2.24 < 5; byte chi^2 277.3 below the 0.9999 quantile (statistical)
-  (0.70 s)
+  (0.71 s)
 
 == Summary ==
-  functional checks : 38/38 passed
+  functional checks : 44/44 passed
   statistical tests : 7/7 passed
   total time        : 62.1 s

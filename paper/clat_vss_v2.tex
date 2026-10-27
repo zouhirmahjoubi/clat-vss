@@ -46,7 +46,7 @@ CLAT-VSS is a threshold key vault. A master key (MK) is wrapped under a key-encr
 
 Version 2 removes every one of these components and rebuilds the vault on one public object: \emph{CLAT-P}, a 24-round, full-round substitution-permutation network on $\Fq^{16}$ with $q = 2^{31}-1$, the S-box $x^5$, and a $16\times16$ Cauchy MDS matrix. A sponge over CLAT-P provides hashing, commitments, Fiat-Shamir challenges and a deterministic authenticated key wrap (CLAT-SIV). The VSS uses only hash commitments, so it needs no discrete-log assumption, and its soundness error is $q^{-5} \approx 2^{-155}$ per challenge query. The combiner runs end to end on 2-share arithmetic masking with ISW multiplication and OS randomness.
 
-The single-file C11 implementation (2907 lines, no dependencies beyond the C standard library, with \code{libm} for test statistics, and the OS random source) passes 38 of 38 functional checks and 7 of 7 statistical tests on Windows, Linux and macOS (arm64), and runs with no report under AddressSanitizer and UndefinedBehaviorSanitizer. These include the dudect timing test (max $\abs{t} = 1.71$ for CLAT-P and $0.49$ for the masked unwrap), a simulated-leakage TVLA in value and transition models (0 leaking samples on the masked paths, 7170 on the unmasked control), and degree-growth tests that reproduce the integral property on reduced rounds and show why it fails at full rounds. A separate red-team harness ran nine attacks and one hiding check against v2; no attack succeeded. A complaint round, added after those runs, names a cheating dealer and disqualifies it; with it the suite passes 44 of 44 functional and 7 of 7 statistical tests on Windows (\code{results/v2\_run\_complaint.txt}). Every experimental number in this paper is produced by the shipped code; the v1 breaks and the security bounds are derived analytically.
+The single-file C11 implementation (2907 lines, no dependencies beyond the C standard library, with \code{libm} for test statistics, and the OS random source) passes 44 of 44 functional checks and 7 of 7 statistical tests on Windows, Linux and macOS (arm64), and runs with no report under AddressSanitizer and UndefinedBehaviorSanitizer. These include the dudect timing test (max $\abs{t} = 1.71$ for CLAT-P and $0.49$ for the masked unwrap), a simulated-leakage TVLA in value and transition models (0 leaking samples on the masked paths, 7170 on the unmasked control), and degree-growth tests that reproduce the integral property on reduced rounds and show why it fails at full rounds. A separate red-team harness ran nine attacks and one hiding check against v2; no attack succeeded. A complaint round names a cheating dealer and disqualifies it. Every experimental number in this paper is produced by the shipped code; the v1 breaks and the security bounds are derived analytically.
 \end{abstract}
 
 \begin{center}\small
@@ -372,14 +372,14 @@ The same source was built with the flags above and run by GitHub Actions on Ubun
 \toprule
 Platform & Compiler & OS RNG & Timer & dudect $\abs{t}$ & Functional & Statistical\\
 \midrule
-Windows 10, x86-64 & GCC 16.2.0 & \code{RtlGenRandom} & \code{rdtsc} & 1.71 / 0.49 & 38/38 & 7/7\\
-Ubuntu 24.04, x86-64 (CI) & GCC 13.3.0 & \code{getrandom} & \code{rdtsc} & 0.91 / 1.51 & 38/38 & 7/7\\
-Ubuntu 24.04, x86-64 (CI) & Clang 18.1.3 & \code{getrandom} & \code{rdtsc} & 2.01 / 0.66 & 38/38 & 7/7\\
-macOS 14, arm64 (CI) & Apple Clang 15.0.0 & \code{getentropy} & \code{clock\_gettime} & 1.12 / 1.85 & 38/38 & 7/7\\
-Ubuntu 24.04, ASan + UBSan & GCC 13.3.0, \code{-O1} & \code{getrandom} & \code{rdtsc} & 1.71 / 1.69 & 36/36$^{*}$ & 7/7\\
+Windows 10, x86-64 & GCC 16.2.0 & \code{RtlGenRandom} & \code{rdtsc} & 1.05 / 1.32 & 44/44 & 7/7\\
+Ubuntu 24.04, x86-64 (CI) & GCC 13.3.0 & \code{getrandom} & \code{rdtsc} & 1.28 / 2.34 & 44/44 & 7/7\\
+Ubuntu 24.04, x86-64 (CI) & Clang 18.1.3 & \code{getrandom} & \code{rdtsc} & 0.55 / 1.95 & 44/44 & 7/7\\
+macOS 14, arm64 (CI) & Apple Clang 15.0.0 & \code{getentropy} & \code{clock\_gettime} & 1.33 / 1.20 & 44/44 & 7/7\\
+Ubuntu 24.04, ASan + UBSan & GCC 13.3.0, \code{-O1} & \code{getrandom} & \code{rdtsc} & 1.57 / 1.98 & 42/42$^{*}$ & 7/7\\
 \bottomrule
 \end{tabular}
-\caption{The suite on four configurations. The dudect column gives CLAT-P / masked unwrap. In every run the red-team harness reports 0 successful attacks. $^{*}$The sanitizer build skips the two dead-stack probes, because ASan's redzones change the stack layout they measure; the run produced no sanitizer report.}\label{tab:platforms}
+\caption{The suite, with the complaint round, on five configurations (Windows: \code{results/v2\_run\_complaint.txt}; CI: \code{results/ci/}). The dudect column gives CLAT-P / masked unwrap. The other figures in this section come from the earlier Windows run in \code{results/v2\_run\_verify.txt}, made before the complaint round added 6 checks. In every run the red-team harness reports 0 successful attacks. $^{*}$The sanitizer build skips the two dead-stack probes, because ASan's redzones change the stack layout they measure; the run produced no sanitizer report.}\label{tab:platforms}
 \end{table}
 
 \paragraph{Vault demonstration (3-of-5).}
