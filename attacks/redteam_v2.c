@@ -397,6 +397,50 @@ static void A9_prg_advantage(void)
     if (!ok) fails++;
 }
 
+/* ---- A10: cheating dealer vs the complaint round -------------------------- *
+ * The dealer commits to an off-polynomial share for custodian 3, who
+ * complains. To stay qualified the dealer must open a share that passes both
+ * the commitment and the g-check. We try 100000 openings: on-polynomial
+ * values with fresh salts (fail the commitment) and the committed share with
+ * random r adjustments (fail the g-check). Then T-1 dishonest custodians file
+ * false complaints against an honest dealer, who must stay qualified.        */
+static void A10_complaint_round(void)
+{
+    uint32_t kek[KEY_LIMBS]; uint8_t kb[KEY_BYTES];
+    vss_share sh[VSS_MAX_N], cand, good[VSS_MAX_N];
+    vss_transcript tr, tr_ok; vss_polys p;
+    const uint32_t T = 3, N = 5, who3[1] = { 3 }, false2[2] = { 1, 5 };
+    const vss_share *open[2];
+    size_t tries = 100000, kept = 0;
+
+    os_random_bytes(kb, sizeof kb); key_to_limbs(kb, kek);
+    vss_make_polys(kek, T, &p);
+    for (uint32_t i = 0; i < N; i++) vss_eval_share(&p, i + 1, &sh[i]);
+    vss_share honest3 = sh[2];
+    sh[2].f[0] = fq_add(sh[2].f[0], 1);              /* committed bad share */
+    vss_publish(&p, sh, N, &tr);
+    for (size_t it = 0; it < tries; it++) {
+        if (it & 1) {                                 /* right value, new salt */
+            cand = honest3;
+            for (unsigned j = 0; j < VSS_SALT; j++) cand.salt[j] = rng_fq();
+        } else {                                      /* committed value, patched r */
+            cand = sh[2];
+            cand.r[it % VSS_M] = rng_fq();
+        }
+        open[0] = &cand;
+        kept += vss_resolve_complaints(&tr, T, N, who3, 1, open) == VSS_QUALIFIED;
+    }
+    vss_deal(kek, T, N, good, &tr_ok);
+    open[0] = &good[0]; open[1] = &good[4];
+    int honest_kept = vss_resolve_complaints(&tr_ok, T, N, false2, 2, open) == VSS_QUALIFIED;
+    int ok = kept == 0 && honest_kept;
+    printf("[A10] complaint round: cheating dealer stayed qualified in %zu/%zu forged "
+           "openings ; honest dealer survives T-1 = 2 false complaints? %s -> %s\n",
+           kept, tries, honest_kept ? "yes" : "NO",
+           ok ? "dealer cheating is caught and named" : "COMPLAINT ROUND BROKEN");
+    if (!ok) fails++;
+}
+
 int main(void)
 {
     clat_init();
@@ -408,6 +452,7 @@ int main(void)
     A5_randomness();
     A8_two_time_pad();
     A9_prg_advantage();
+    A10_complaint_round();
     A7_birthday();
     A4_siv_forgery();      /* heaviest, run last */
     printf("\n== red-team summary: %d attack(s) succeeded ==\n", fails);

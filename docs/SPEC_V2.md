@@ -45,6 +45,10 @@ on Linux (glibc) and Windows (WinLibs MinGW-w64 UCRT gcc). No `%` or `/` on secr
   return which custodian failed.
 - Soundness: a share vector off a degree-(T-1) codeword survives one random d_k with prob <= 1/q; 5 independent
   challenges -> q^-5 ~ 2^-155 per Fiat-Shamir query. Hiding: r_k(0) uniform masks g_k(0); T-1 shares reveal nothing.
+- 5.4 Complaint round: custodian i complains if its share fails or carries another index. >= T distinct complaints
+  -> dealer disqualified (answering would reveal the KEK). Else the dealer opens (i, f(i), r(i), salt_i) for each
+  complainer; missing, wrong index or failed full check -> disqualified; a passing opening becomes i's share.
+  Repeated or out-of-range complainer index -> malformed list (complainers' fault).
 
 ## 6. Masking (2-share arithmetic, first-order probing model)
 - x = x0 + x1 mod q. Linear ops share-wise, constants on share 0.

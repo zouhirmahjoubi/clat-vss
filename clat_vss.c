@@ -1217,6 +1217,68 @@ static uint32_t vss_verify_all(const vss_transcript *tr, uint32_t T, uint32_t N,
     return failed;
 }
 
+/* Complaint round (SPEC section 5.4). A custodian whose share fails its
+   own check broadcasts a complaint against the dealer. The dealer must then
+   open that custodian's share in public, and everyone runs the full check
+   (commitment and g-check) on the opening. An opening that passes replaces
+   the complainer's share. Each opening reveals one share to everyone, so
+   T or more complaints would reveal the KEK: the dealer is then
+   disqualified instead of answering. With at most T-1 dishonest
+   custodians, false complaints cannot disqualify an honest dealer. */
+#define VSS_QUALIFIED     0
+#define VSS_DISQUALIFIED  1
+#define VSS_BAD_COMPLAINTS (-1)
+
+/* Full check of one share against a transcript whose policy is (T, N),
+   challenge included. Used on a custodian's own share and on public
+   openings, so the unmasked path is fine. 1 = valid. */
+static uint32_t vss_share_valid_public(const vss_transcript *tr, uint32_t T, uint32_t N,
+                                       const vss_share *s)
+{
+    uint32_t d[VSS_D_WORDS], ok;
+    if (tr->T != T || tr->N != N || vss_challenge(tr, d) != 0)
+        return 0;
+    ok = vss_share_valid(tr, d, s);
+    stack_burn();
+    return ok;
+}
+
+/* Custodian side: 1 if custodian `slot` must complain about the share it
+   received (it fails the full check or carries another index). */
+static int vss_should_complain(const vss_transcript *tr, uint32_t T, uint32_t N,
+                               const vss_share *mine, uint32_t slot)
+{
+    return mine->x != slot || !vss_share_valid_public(tr, T, N, mine);
+}
+
+/* Everyone: resolve the complaints from custodians who[0..n) using the
+   dealer's openings (openings[j] answers who[j]; NULL = the dealer stayed
+   silent). Returns VSS_QUALIFIED, VSS_DISQUALIFIED, or VSS_BAD_COMPLAINTS
+   for a malformed complaint list (an index outside 1..N or a repeat),
+   which is the complainers' fault, not the dealer's. */
+static int vss_resolve_complaints(const vss_transcript *tr, uint32_t T, uint32_t N,
+                                  const uint32_t *who, size_t n,
+                                  const vss_share *const *openings)
+{
+    uint32_t seen = 0;
+    if (n > VSS_MAX_N)
+        return VSS_BAD_COMPLAINTS;
+    for (size_t j = 0; j < n; j++) {
+        if (who[j] < 1 || who[j] > N || who[j] > VSS_MAX_N || (seen >> who[j]) & 1u)
+            return VSS_BAD_COMPLAINTS;
+        seen |= 1u << who[j];
+    }
+    if (n == 0)
+        return VSS_QUALIFIED;
+    if (n >= T)
+        return VSS_DISQUALIFIED;
+    for (size_t j = 0; j < n; j++)
+        if (openings[j] == NULL || openings[j]->x != who[j] ||
+            !vss_share_valid_public(tr, T, N, openings[j]))
+            return VSS_DISQUALIFIED;
+    return VSS_QUALIFIED;
+}
+
 static CLAT_NOINLINE void vss_share_mask_impl(const vss_share *s, vss_share_masked *m)
 {
     m->x = s->x;
@@ -1998,6 +2060,59 @@ static void test_vault(void)
     snprintf(line, sizeof line, "dealer's off-polynomial share for custodian 3 caught by the "
              "g-check (its commitment matches; failure mask 0x%02x)", (unsigned)failed);
     check(failed == (1u << 3) && ct_words_equal(c, trc.c[2], DIGEST_WORDS), line);
+
+    /* Tamper J: complaint round. Custodian 3 complains about the cheating
+       dealer of Tamper C; the dealer opens, substitutes or stays silent. */
+    {
+        const uint32_t who3[1] = { 3 }, who2[1] = { 2 }, who23[2] = { 2, 3 };
+        const uint32_t whoT[3] = { 1, 2, 4 }, dup[2] = { 2, 2 }, out[1] = { 6 };
+        const vss_share *open[3];
+        vss_share sub = alt[2];
+        int honest_quiet = 1, rq, rs, rn, rf, rt, rd, ro, r2;
+
+        for (uint32_t i = 0; i < N; i++)
+            honest_quiet &= !vss_should_complain(&tr, T, N, &sh[i], i + 1);
+        check(honest_quiet && vss_resolve_complaints(&tr, T, N, NULL, 0, NULL) == VSS_QUALIFIED,
+              "complaint round: no custodian complains about an honest dealer, who stays qualified");
+
+        open[0] = &alt[2];
+        rq = vss_resolve_complaints(&trc, T, N, who3, 1, open);
+        check(vss_should_complain(&trc, T, N, &alt[2], 3) && rq == VSS_DISQUALIFIED,
+              "custodian 3 complains; the dealer opens the committed bad share and is disqualified");
+
+        sub.f[0] = fq_sub(sub.f[0], 1);                 /* back on the polynomial */
+        for (unsigned j = 0; j < VSS_SALT; j++)
+            sub.salt[j] = rng_fq();
+        open[0] = &sub;
+        rs = vss_resolve_complaints(&trc, T, N, who3, 1, open);
+        open[0] = NULL;
+        rn = vss_resolve_complaints(&trc, T, N, who3, 1, open);
+        check(rs == VSS_DISQUALIFIED && rn == VSS_DISQUALIFIED,
+              "a substituted on-polynomial opening fails the commitment, and silence also "
+              "disqualifies the dealer");
+
+        open[0] = &sh[1];                                /* false complaint by custodian 2 */
+        rf = vss_resolve_complaints(&tr, T, N, who2, 1, open);
+        failed = vss_verify_all(&tr, T, N, sh, N);
+        check(rf == VSS_QUALIFIED && failed == 0,
+              "a false complaint against an honest dealer: the opening passes, the dealer stays "
+              "qualified, and custodian 2 keeps a valid share");
+
+        open[0] = &sh[1]; open[1] = &sh[2];
+        r2 = vss_resolve_complaints(&tr, T, N, who23, 2, open);
+        open[0] = &sh[0]; open[1] = &sh[1]; open[2] = &sh[3];
+        rt = vss_resolve_complaints(&tr, T, N, whoT, 3, open);
+        check(r2 == VSS_QUALIFIED && rt == VSS_DISQUALIFIED,
+              "T-1 = 2 complaints are answered; T = 3 complaints disqualify the dealer instead "
+              "of opening enough shares to reveal the KEK");
+
+        rd = vss_resolve_complaints(&tr, T, N, dup, 2, open);
+        ro = vss_resolve_complaints(&tr, T, N, out, 1, open);
+        check(rd == VSS_BAD_COMPLAINTS && ro == VSS_BAD_COMPLAINTS,
+              "a repeated complainer or an index outside 1..N is rejected as a malformed "
+              "complaint list");
+        secure_zeroize(&sub, sizeof sub);
+    }
 
     /* Tamper D: ciphertext, tag, nonce and header modifications */
     {

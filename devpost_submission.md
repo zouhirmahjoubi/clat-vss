@@ -27,7 +27,7 @@ The paper (Section 3) gives the math for each break. v2 drops every part that re
 
 A master key (MK) is wrapped under a key-encryption key (KEK), and the KEK is split among N custodians so that any T of them can recover it. In the demo, T = 3 and N = 5.
 
-With fewer than T custodians, nothing about the key is revealed. If a custodian sends a bad share, the check fails and reports which custodian sent it. If the dealer hands out shares that do not fit one polynomial, the custodians' checks catch that as well. The device that recombines the shares keeps the KEK and the MK split into two random shares at every step, and hands the MK out still split.
+With fewer than T custodians, nothing about the key is revealed. If a custodian sends a bad share, the check fails and reports which custodian sent it. If the dealer hands out shares that do not fit one polynomial, the custodians' checks catch that as well. The custodian who got the bad share files a complaint, and the dealer must show that share in public or be disqualified. The device that recombines the shares keeps the KEK and the MK split into two random shares at every step, and hands the MK out still split.
 
 ## How it works
 
@@ -49,6 +49,7 @@ With fewer than T custodians, nothing about the key is revealed. If a custodian 
 - Every share is committed with a salted hash.
 - A challenge is derived from all the commitments.
 - The dealer publishes five check polynomials, each a random mask polynomial plus a challenge-weighted sum of the sharing polynomials.
+- A custodian whose share fails files a complaint. The dealer must open that share in public, and everyone checks it. A failed or missing opening, or complaints from T custodians, disqualifies the dealer.
 
 A dealer who hands out inconsistent shares passes with probability about 2^-155 for each challenge attempt. T-1 shares, plus everything public, reveal nothing about the key. Both proofs are in Section 5.3 of the paper. The scheme relies only on hashing, so Shor's algorithm does not apply to it.
 
@@ -71,7 +72,7 @@ The program prints every number below at run time. The machine was an Intel i5-6
 
 | Test | Result |
 |---|---|
-| Functional checks | 38 of 38 pass |
+| Functional checks | 44 of 44 pass with the complaint round (Windows); 38 of 38 before it |
 | Statistical tests | 7 of 7 pass |
 | Known answers | match an independent Python implementation (`tools/ref_kat.py`) |
 | Cauchy MDS minors | 256/256 1x1, 14400/14400 2x2 and 10000/10000 random kxk are nonsingular |
@@ -80,12 +81,12 @@ The program prints every number below at run time. The machine was an Intel i5-6
 | Degree test, rounds 1 to 7 | the integral sum holds whenever the subgroup size is above 5^R, and fails as expected when it is not |
 | dudect timing, 10^5 runs | largest abs(t) is 1.71 for the permutation and 0.49 for masked unwrap (threshold 4.5) |
 | Simulated power leakage (TVLA) | unmasked code leaks at 7170 points; the three masked code paths leak at 0 |
-| Platforms | 38 of 38 on Windows (GCC), Ubuntu (GCC and Clang) and macOS arm64 (Apple Clang) |
+| Platforms | 38 of 38 on Windows (GCC), Ubuntu (GCC and Clang) and macOS arm64 (Apple Clang), before the complaint round |
 | Sanitizers | no reports under AddressSanitizer and UndefinedBehaviorSanitizer |
 | Masked check of 5 shares | 2.27 ms |
 | Masked reconstruct and unwrap | 0.38 ms |
 
-**Red team.** A separate harness (`attacks/redteam_v2.c`) attacks v2 directly. All eight attacks failed, and a ninth check confirms the hiding property.
+**Red team.** A separate harness (`attacks/redteam_v2.c`) attacks v2 directly. All nine attacks failed, and a tenth check confirms the hiding property.
 
 - **v1 key-leak attack, ported to v2.** The ciphertext shows no small-noise structure.
 - **Hiding check.** For any candidate key there is a mask value that explains the public transcript, so the transcript rules out no key. The harness shows this on 100000 random candidates.
@@ -96,6 +97,7 @@ The program prints every number below at run time. The machine was an Intel i5-6
 - **Birthday attack.** On a 20-bit cut of the hash, collisions came after 1278 hashes on average, matching the generic 1283.
 - **Nonce reuse.** A reused nonce leaks the message difference in 0 of 180000 words. A weak control leaks it in all of them.
 - **Keystream tests.** No test told the keystream from random (advantage at most 0.0019). A linear control is caught every time.
+- **Cheating dealer.** In 100000 tries, the dealer never answered a complaint with a forged share that passed. False complaints from 2 custodians did not remove an honest dealer.
 
 Before the red team, three reviews (cryptanalysis, side channels, correctness) raised 19 findings. We fixed 18 and added a regression test for each. One of them was a stack overflow that a crafted transcript could trigger. The paper explains why we rejected the 19th.
 

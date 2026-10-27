@@ -46,7 +46,7 @@ CLAT-VSS is a threshold key vault. A master key (MK) is wrapped under a key-encr
 
 Version 2 removes every one of these components and rebuilds the vault on one public object: \emph{CLAT-P}, a 24-round, full-round substitution-permutation network on $\Fq^{16}$ with $q = 2^{31}-1$, the S-box $x^5$, and a $16\times16$ Cauchy MDS matrix. A sponge over CLAT-P provides hashing, commitments, Fiat-Shamir challenges and a deterministic authenticated key wrap (CLAT-SIV). The VSS uses only hash commitments, so it needs no discrete-log assumption, and its soundness error is $q^{-5} \approx 2^{-155}$ per challenge query. The combiner runs end to end on 2-share arithmetic masking with ISW multiplication and OS randomness.
 
-The single-file C11 implementation (2792 lines, no dependencies beyond the C standard library, with \code{libm} for test statistics, and the OS random source) passes 38 of 38 functional checks and 7 of 7 statistical tests on Windows, Linux and macOS (arm64), and runs with no report under AddressSanitizer and UndefinedBehaviorSanitizer. These include the dudect timing test (max $\abs{t} = 1.71$ for CLAT-P and $0.49$ for the masked unwrap), a simulated-leakage TVLA in value and transition models (0 leaking samples on the masked paths, 7170 on the unmasked control), and degree-growth tests that reproduce the integral property on reduced rounds and show why it fails at full rounds. A separate red-team harness ran eight attacks and one hiding check against v2; no attack succeeded. Every experimental number in this paper is produced by the shipped code; the v1 breaks and the security bounds are derived analytically.
+The single-file C11 implementation (2907 lines, no dependencies beyond the C standard library, with \code{libm} for test statistics, and the OS random source) passes 38 of 38 functional checks and 7 of 7 statistical tests on Windows, Linux and macOS (arm64), and runs with no report under AddressSanitizer and UndefinedBehaviorSanitizer. These include the dudect timing test (max $\abs{t} = 1.71$ for CLAT-P and $0.49$ for the masked unwrap), a simulated-leakage TVLA in value and transition models (0 leaking samples on the masked paths, 7170 on the unmasked control), and degree-growth tests that reproduce the integral property on reduced rounds and show why it fails at full rounds. A separate red-team harness ran nine attacks and one hiding check against v2; no attack succeeded. A complaint round, added after those runs, names a cheating dealer and disqualifies it; with it the suite passes 44 of 44 functional and 7 of 7 statistical tests on Windows (\code{results/v2\_run\_complaint.txt}). Every experimental number in this paper is produced by the shipped code; the v1 breaks and the security bounds are derived analytically.
 \end{abstract}
 
 \begin{center}\small
@@ -300,6 +300,23 @@ Since $r_k(0)$ is uniform and appears nowhere else in the view, $g_k(0)$ is unif
 The VSS rests only on hash functions modelled as random oracles, so it avoids the discrete-log assumption that Feldman~\cite{feldman} and Pedersen~\cite{pedersen} VSS need. The random-linear-combination check follows the pattern of recent hash-based non-interactive VSS~\cite{abcp23}. Our contribution is to instantiate it over a single Mersenne-31 permutation and to run its verifier on masked data.
 \end{remark}
 
+\subsection{Complaint round}\label{sec:complaint}
+Detection alone leaves a custodian with a bad share and no remedy. v2 adds the complaint round of Feldman and Pedersen VSS~\cite{feldman,pedersen}, with the hash commitment in place of the group commitment.
+\begin{enumerate}
+  \item Each custodian $i$ runs the full check on its own share. If the check fails, or the share carries another index, custodian $i$ broadcasts a complaint against the dealer.
+  \item If $T$ or more distinct custodians complain, the dealer is disqualified. Answering would put $T$ shares in public and reveal the KEK.
+  \item Otherwise the dealer broadcasts, for each complainer $i$, an opening $(i, f(i), r(i), \mathit{salt}_i)$. Everyone runs the full check on it. A missing opening, a wrong index or a failed check disqualifies the dealer. A passing opening becomes custodian $i$'s share.
+\end{enumerate}
+A complaint list with a repeated index or an index outside $1..N$ is rejected as malformed; that fault belongs to the complainers.
+
+\begin{theorem}[complaint round]\label{thm:complaint}
+Under the conditions of Theorem~\ref{thm:sound}, suppose at most $T-1$ custodians are dishonest and the dealer is not disqualified. Then, except with probability at most $Q\,q^{-5} + Q^2 q^{-9}$, every honest custodian ends the round holding a share on the polynomials $F_0,\dots,F_8$, so any $T$ of them reconstruct the same KEK. An honest dealer is never disqualified.
+\end{theorem}
+\begin{proof}
+An honest custodian whose share fails complains, and the dealer stays qualified only by opening a share that passes the full check at that index. By binding, that opening equals the one committed in $c_i$. So every honest custodian ends with an accepted share, and Theorem~\ref{thm:sound} applies to the honest set. An honest dealer gives honest custodians valid shares, so only the at most $T-1$ dishonest custodians complain. That is fewer than $T$, and each opening of the committed share passes.
+\end{proof}
+Each opening puts one share in public. A dishonest complainer learns only its own share. An honest custodian complains only when the dealer cheated or the private channel failed, so hiding (Theorem~\ref{thm:hide}) holds as long as the dishonest custodians and the opened shares together number at most $T-1$.
+
 \subsection{Masking}\label{sec:masking}
 A secret $x$ is held as $(x_0, x_1)$ with $x = x_0 + x_1$. Linear operations, including the MDS layer, constant addition and Lagrange combination with public $\lambda_i$, act on each share separately. Multiplication uses the ISW gadget~\cite{isw} with fresh $\rho$:
 \[
@@ -431,7 +448,7 @@ These statistics would catch a gross implementation error. They say nothing abou
 
 \section{Red-team results}\label{sec:redteam}
 
-A separate harness, \code{attacks/redteam\_v2.c}, includes the v2 source and attacks its internal functions directly. Results are in \code{results/redteam\_v2\_run.txt}. None of the eight attacks (A1, A3 to A9) succeeded; A2 is a hiding check that cannot fail. A7 to A9 follow Boneh's \emph{Cryptography I}~\cite{boneh}, and each runs a weak control that the attack must break.
+A separate harness, \code{attacks/redteam\_v2.c}, includes the v2 source and attacks its internal functions directly. Results are in \code{results/redteam\_v2\_run.txt}. None of the nine attacks (A1, A3 to A10) succeeded; A2 is a hiding check that cannot fail. A7 to A9 follow Boneh's \emph{Cryptography I}~\cite{boneh}, and each runs a weak control that the attack must break.
 \begin{enumerate}[label=A\arabic*]
   \item \emph{Port of the v1 LWE leak.} Over 180000 ciphertext words, the mean distance to the nearest multiple of $2^{15}$ is 8184.7 (uniform: 8192), and $\Pr[\text{distance} \le 4] = 2.94\times10^{-4}$ (uniform: $2.75\times10^{-4}$). No small-error structure remains.
   \item \emph{KEK from the transcript (hiding check, not an attack).} For any candidate KEK $s$, $r_k(0) = g_k(0) - \sum_l d_{k,l} s_l$ is a valid masking constant, so the transcript alone rules out no KEK (Theorem~\ref{thm:hide}). The harness illustrates this on 100000 random candidates; the count follows from the argument and is not a measurement.
@@ -442,6 +459,7 @@ A separate harness, \code{attacks/redteam\_v2.c}, includes the v2 source and att
   \item \emph{Generic birthday attack.} With CLAT-H truncated to 20 bits, the first collision came after 1278 hashes on average over 256 trials, against the generic $\sqrt{\pi/2 \cdot 2^{20}} = 1283$ (ratio 0.996). None held on the full 279-bit digest, which needs about $2^{139.5}$ work.
   \item \emph{Two-time pad.} A fixed-IV control leaks $m_1 - m_2$ in 180000 of 180000 words. CLAT-SIV with a reused nonce leaks it in 0 of 180000; equal messages give equal blobs in 20000 of 20000 cases, the stated leak of a deterministic mode.
   \item \emph{PRG distinguishing advantage.} Over 200000 keystream samples, parity, half-range and linear ($w_1 = 7 w_0$) tests reach advantage at most 0.0019, under the 4-sigma bound 0.0089. The linear control reaches 1.0000. This is a sanity check, not a proof.
+  \item \emph{Cheating dealer against the complaint round.} The dealer commits to a bad share for custodian 3, who complains. Of 100000 forged openings (the correct value with a new salt, or the committed value with a patched $r$), 0 kept the dealer qualified. An honest dealer stayed qualified after $T-1 = 2$ false complaints.
 \end{enumerate}
 
 Before the red team ran, three independent reviews (cryptanalysis, side channels, correctness) produced 19 findings. 18 were fixed; the code-level fixes (transcript checks, header binding, blame by slot, index and key ranges, stack burn) have regression checks in Tests 2 and 3. One was rejected: the claim that the shared KEK should be provably bound to the blob. A dealer can always wrap garbage, and a wrong KEK is caught by the SIV tag at unwrap time.
@@ -487,7 +505,7 @@ Generic birthday attack (Boneh) & collisions after about $2^{b/2}$ hashes & A7 m
   \item \textbf{Timing platforms.} The suite passes on Windows, Linux and macOS (Table~\ref{tab:platforms}). The Linux and macOS timing tests ran on shared CI virtual machines, and the arm64 run uses \code{clock\_gettime} instead of a cycle counter, so those dudect figures are coarser than the laptop run. BSD, which shares the \code{getentropy} path with macOS, was not tested separately.
   \item \textbf{Threads.} The mask buffer is process-wide and unlocked, so callers must not run the masked entry points from two threads at once.
   \item \textbf{Quantum dealer.} Shor's algorithm does not apply to the VSS, but Grover search lets a quantum dealer find a passing challenge in about $q^{5/2} \approx 2^{78}$ queries. Raising the number of masking polynomials from 5 to 9 would restore about $2^{139}$.
-  \item \textbf{Broadcast.} The VSS assumes all custodians see the same transcript. The protocol does not include a complaint round.
+  \item \textbf{Broadcast.} The VSS assumes all custodians see the same transcript. A complaint round (Section~\ref{sec:complaint}) resolves a bad share, but it also relies on that broadcast.
   \item \textbf{Course transcripts.} YouTube rate-limited the transcript downloads (HTTP 429), so the concept map is built from the lecture titles and the companion textbook~\cite{paarbook}, not from transcripts.
 \end{itemize}
 
