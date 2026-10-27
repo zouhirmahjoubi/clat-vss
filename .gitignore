@@ -1,0 +1,27 @@
+# build outputs
+*.exe
+/clat_vss
+/clat_vss_san
+/attacks/redteam_v2
+ci-results/
+
+*.o
+*.dSYM/
+__pycache__/
+.DS_Store
+
+# LaTeX intermediates
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.bbl
+paper/*.blg
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.synctex.gz
+
+# local session notes and tool output
+.adams/
+.claude/
+graphify-out/

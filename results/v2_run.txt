@@ -1,0 +1,134 @@
+CLAT-VSS v2 test suite (default mode)
+  field q = 2^31 - 1; CLAT-P t = 16, R = 24; sponge rate 7, capacity 9
+  OS randomness: RtlGenRandom (advapi32 SystemFunction036)
+  compiler: 16.2.0
+
+== Test 1: known-answer tests ==
+    CLAT-P(0..15):
+      5f0d27c8 4a31df17 74646b11 47f73390 2a465712 705c8c70 051385f1 75f8a285
+      294ee63a 0ac56767 7d0f1903 412b9a80 60e36308 6b8ebc10 2aa487a7 0dc08878
+  [PASS] CLAT-P(0..15) matches recorded value
+    H(HT_KAT, empty):
+      0fcb86a3 77e744d8 7d4aa4bb 0ebfa8eb 4a149c3c 63dd9090 7d325847 01918bb0
+      29c15fa8
+  [PASS] H(HT_KAT, empty) matches recorded value
+    SIV wrap (nonce || ct || tag):
+      00000001 00000002 00000003 00000004 00000005 00000006 00000007 47d31d57
+      5959755a 029d6d58 4f9ff3a4 4d858144 7685ef07 08d0534e 63bb3982 3417916c
+      67266edd 47930486 4f02a937 58b4a5d0 23705f82 75e67e31 557e8976
+  [PASS] SIV wrap matches recorded value
+  [PASS] SIV unwrap of the KAT blob returns the message
+  (0.00 s)
+
+== Test 2: self-tests ==
+  [PASS] q-1 = 2 * 3^2 * 7 * 11 * 31 * 151 * 331
+  [PASS] 7 is a primitive root: 7^((q-1)/p) != 1 for every prime p | q-1
+  [PASS] 5 * D_INV = 1 mod (q-1), D_INV = 1717986917
+  [PASS] field ops match a 64-bit % reference on 10^4 random pairs; x^D_INV inverts x^5
+  [PASS] Cauchy MDS minors nonsingular: 256/256 1x1, 14400/14400 2x2, 10000/10000 random k x k (k = 1..16)
+  [PASS] masked CLAT-P == CLAT-P on 200 random states
+  [PASS] masked sponge hash == sponge hash on 50 random 24-word inputs
+  [PASS] masked SIV unwrap == unmasked unwrap on 20 blobs (10 valid, 10 forged tags)
+  [PASS] 256-bit key <-> 9 limbs round-trips 1000 keys; non-canonical limbs rejected
+  [PASS] secure_zeroize on a dead buffer survives optimisation: longest 0xA5 run left = 0 bytes (control, plain memset: 256 bytes)
+  [PASS] dead stack after clat_siv_wrap: 0 nonzero bytes of 2048 (control without the burn: 254 nonzero bytes)
+  (0.07 s)
+
+== Test 3: threshold key vault demo (3-of-5) ==
+    MK and KEK: 32 bytes each from RtlGenRandom (advapi32 SystemFunction036)
+  [PASS] MK wrapped under KEK; dealer split KEK 3-of-5
+  [PASS] all 5 shares verify against the header's 3-of-5 policy (unmasked reference verifier, dealer / custodian side)
+  [PASS] combiner: all 5 split shares verify on the masked path (1.50 ms total)
+  [PASS] masked Lagrange at 0 from custodians {2,4,5} yields the KEK
+  [PASS] masked SIV unwrap returns MK as 2 shares; joined MK matches (0.24 ms reconstruct + unwrap)
+  [PASS] recovered MK bytes equal the original 32 bytes
+  [PASS] 10/10 three-custodian subsets recover the KEK; 0/10 two-custodian subsets do
+  [PASS] 1-bit flip in custodian 4's share rejected (failure mask 0x10 names custodian 4; masked verifier agrees)
+  [PASS] forged share for custodian 2 satisfies every g-check (consistent forgery)
+  [PASS] the forged share is rejected by its commitment (failure mask 0x04)
+  [PASS] if used anyway, the forged share gives a wrong KEK: unwrap fails, output wiped
+  [PASS] dealer's off-polynomial share for custodian 3 caught by the g-check (its commitment matches; failure mask 0x08)
+    ciphertext modified: rejected, output wiped
+    tag        modified: rejected, output wiped
+    nonce      modified: rejected, output wiped
+    header     modified: rejected, output wiped
+  [PASS] ciphertext / tag / nonce / header modifications rejected and output wiped
+  [PASS] transcript with N = 17 rejected before hashing (mask 0x3f); non-canonical g coefficient rejected as malformed (mask 0x3f)
+  [PASS] custodian 5 sending custodian 2's share, or index 34, is blamed itself (masks 0x20, 0x20)
+  [PASS] 5-of-5 sharing under a 3-of-5 header rejected as a policy mismatch (mask 0x3f)
+  [PASS] reconstruction rejects x = 3 + q and x = 0 instead of returning a wrong secret
+  [PASS] wrap and deal reject a canonical key with limb 8 >= 2^24 (domain collision)
+  (0.01 s)
+
+== Test 4: degree growth (integral property) on reduced rounds ==
+    q-1 has 192 divisors; d = subgroup order, 5^R = degree bound after R rounds
+     R      5^R   d > 5^R   relation   control d <= 5^R   relation
+     1        5         6   holds            3            fails
+     2       25        31   holds           22            fails
+     3      125       126   holds           99            fails
+     4      625       651   holds          558            fails
+     5     3125      3171   holds         3069            fails
+     6    15625     19026   holds        14949            fails
+     7    78125     84258   holds        76461            fails
+  [PASS] sum over H equals d * E_R(a) for every R = 1..7 when d > 5^R
+  [PASS] negative control (d <= 5^R) fails for every R = 1..7
+    info: R = 14, 5^R = 6103515625: single-word relation unavailable; a full-space zero-sum needs k >= 3 input words
+    info: R = 24, 5^R = 59604644775390625: single-word relation unavailable; a full-space zero-sum needs k >= 27755576 input words
+  (0.51 s)
+
+== Test 5: dudect constant-time test (fixed vs random) ==
+    timer: rdtsc with lfence
+    (a) CLAT-P, 100000 measurements
+      crop   n(fixed)  n(random)  mean fixed  mean random        t
+      100%      49856      50144     22406.8      22434.7    -0.16
+       99%      49366      49634     21117.1      21162.6    -2.27
+       95%      47429      47571     20574.6      20583.4    -1.01
+       90%      44922      45083     20358.6      20361.4    -1.31
+       75%      37518      37513     20242.8      20244.6    -1.22
+       50%      25109      24964     20119.9      20119.9     0.10
+  [PASS] dudect CLAT-P: max |t| = 2.27 (threshold 4.5) (statistical)
+    (b) masked SIV unwrap, 100000 measurements
+      crop   n(fixed)  n(random)  mean fixed  mean random        t
+      100%      49734      50266    686355.2     681526.9     0.94
+       99%      49226      49774    652011.3     650130.3     1.47
+       95%      47159      47841    623668.4     624153.8    -0.52
+       90%      44704      45296    601575.3     601609.9    -0.05
+       75%      37268      37732    558344.1     558411.8    -0.68
+       50%      24847      25156    551526.9     551526.3     0.02
+  [PASS] fixed-class key opened the blob 49734/49734 times; random keys opened it 0/50266 times
+  [PASS] dudect masked unwrap: max |t| = 1.47 (threshold 4.5) (statistical)
+  (28.37 s)
+
+== Test 6: simulated-leakage TVLA (HW value model and HD transition model) ==
+    unmasked   8080 samples/trace, 2 sets x 2000 traces  (0.2 s)
+             HW: max|t| = 113.12 / 110.74, samples over 4.5: 7284 / 7273, in both sets: 7130
+             HD: max|t| = 123.93 / 120.30, samples over 4.5: 7168 / 7148, in both sets: 7090
+    masked    28448 samples/trace, 2 sets x 10000 traces  (5.5 s)
+             HW: max|t| = 3.92 / 4.41, samples over 4.5: 0 / 0, in both sets: 0
+             HD: max|t| = 4.32 / 4.09, samples over 4.5: 0 / 0, in both sets: 0
+    combine  170835 samples/trace, 2 sets x 3000 traces  (15.1 s)
+             HW: max|t| = 4.49 / 4.84, samples over 4.5: 0 / 4, in both sets: 0
+             HD: max|t| = 4.38 / 4.52, samples over 4.5: 0 / 1, in both sets: 0
+    verify   170836 samples/trace, 2 sets x 3000 traces  (12.6 s)
+             HW: max|t| = 4.83 / 4.98, samples over 4.5: 2 / 1, in both sets: 0
+             HD: max|t| = 4.25 / 5.38, samples over 4.5: 0 / 4, in both sets: 0
+  [PASS] unmasked CLAT-P leaks at 7130 (HW) / 7090 (HD) samples (the test detects leakage)
+  [PASS] every traced combine and verify operation succeeded (0 failures in 12000 traces)
+  [PASS] masked: 0 (HW) / 0 (HD) samples leak at first order in the simulated HW and HD models (statistical)
+  [PASS] combine: 0 (HW) / 0 (HD) samples leak at first order in the simulated HW and HD models (statistical)
+  [PASS] verify: 0 (HW) / 0 (HD) samples leak at first order in the simulated HW and HD models (statistical)
+  (33.51 s)
+
+== Test 7: statistical sanity checks (sanity, not proof) ==
+    SAC: 200 trials x 496 input bits (0 skipped), 496 output bits
+         mean flip rate 0.500066 (z = 0.93), max per-cell |z| = 4.81, cells with |z| > 5: 0 of 246016
+  [PASS] SAC: |z| of mean flip rate 0.93 < 5 and max per-cell |z| 4.81 < 6 (statistical)
+    bit balance: 131072 words, max |z| over 31 bit positions = 2.24
+    bytes: 507904, Shannon entropy = 7.99961 bits/byte, chi^2(255) = 277.3 (0.9999 quantile 347.7)
+  [PASS] bit balance max |z| 2.24 < 5; byte chi^2 277.3 below the 0.9999 quantile (statistical)
+  (1.44 s)
+
+== Summary ==
+  functional checks : 38/38 passed
+  statistical tests : 7/7 passed
+  total time        : 63.9 s

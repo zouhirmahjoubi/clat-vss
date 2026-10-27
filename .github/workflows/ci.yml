@@ -1,0 +1,113 @@
+name: ci
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Also run the long --full timing and leakage job
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.cc }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, cc: gcc }
+          - { os: ubuntu-24.04, cc: clang }
+          - { os: macos-14, cc: clang }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain
+        run: |
+          mkdir -p ci-results
+          { uname -a; ${{ matrix.cc }} --version; } | tee ci-results/toolchain_${{ matrix.os }}_${{ matrix.cc }}.txt
+      - name: Build with the spec flags
+        run: ${{ matrix.cc }} -std=c11 -O3 -Wall -Wextra -Werror -pedantic clat_vss.c -lm -o clat_vss
+      - name: Run the test suite
+        run: ./clat_vss | tee ci-results/v2_run_${{ matrix.os }}_${{ matrix.cc }}.txt
+      - name: Run the red-team harness
+        run: |
+          cd attacks
+          ${{ matrix.cc }} -std=c11 -O3 -Wall -Wextra -Werror -pedantic redteam_v2.c -lm -o redteam_v2
+          ./redteam_v2 | tee ../ci-results/redteam_${{ matrix.os }}_${{ matrix.cc }}.txt
+      - name: Reproduce the known answers in Python
+        run: |
+          python3 -I tools/ref_kat.py | tee ci-results/ref_kat_${{ matrix.os }}_${{ matrix.cc }}.txt
+          diff tools/kat_expected.txt ci-results/ref_kat_${{ matrix.os }}_${{ matrix.cc }}.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: results-${{ matrix.os }}-${{ matrix.cc }}
+          path: ci-results/
+
+  sanitizers:
+    name: sanitizers (ubuntu-24.04, gcc, ASan + UBSan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Keep ASan compatible with the runner kernel
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
+        run: >
+          gcc -std=c11 -O1 -g -fno-omit-frame-pointer
+          -fsanitize=address,undefined -fno-sanitize-recover=undefined
+          -Wall -Wextra -Werror -pedantic clat_vss.c -lm -o clat_vss_san
+      - name: Run the test suite under the sanitizers
+        env:
+          ASAN_OPTIONS: detect_stack_use_after_return=0:detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: |
+          mkdir -p ci-results
+          set +e
+          ./clat_vss_san > ci-results/sanitizers.txt 2>&1
+          rc=$?
+          set -e
+          echo "suite exit code: $rc" | tee -a ci-results/sanitizers.txt
+          tail -6 ci-results/sanitizers.txt
+          if grep -nE "runtime error:|ERROR: (Address|Leak)Sanitizer" ci-results/sanitizers.txt; then
+            echo "sanitizer report found"; exit 1
+          fi
+          exit "$rc"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: results-sanitizers
+          path: ci-results/
+
+  full:
+    name: full mode (ubuntu-24.04, gcc, --full)
+    if: github.event_name == 'workflow_dispatch' && inputs.full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build with the spec flags
+        run: gcc -std=c11 -O3 -Wall -Wextra -Werror -pedantic clat_vss.c -lm -o clat_vss
+      - name: Run the long timing and leakage tests
+        run: |
+          mkdir -p ci-results
+          ./clat_vss --full | tee ci-results/v2_run_full_ubuntu-24.04_gcc.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: results-full
+          path: ci-results/
