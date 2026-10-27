@@ -60,6 +60,8 @@ Neso Academy "Cryptography & Network Security" (83 videos, PLBlnK6fEyqRgJU3EsOYD
   exit 0 (124.8 s; workflow run results/v2_run.txt 63.9 s). Red team: attacks/redteam_v2.c, results/redteam_v2_run.txt,
   0 of 6 attacks succeeded (A1 LWE-leak port, A2 transcript hiding 100000/100000 candidates consistent, A3 integral
   R=2/3/4 controls, A4 SIV forgery 0/713 bit flips 0/300000 random, A5 fresh masks, A6 consistent forgery stopped by commitment).
+  Later added A7 birthday on 20-bit CLAT-H (1278 vs 1283), A8 two-time pad (0/180000 vs control 180000/180000),
+  A9 PRG advantage (max 0.0019, linear control 1.0); 0 of 9 succeed.
 - Review round fixed 18 of 19 findings (stack overflow on N>16, transcript canonical check, T/N bound to header, blame by
   slot, key range check for domain separation, x range in Lagrange, stack burn after keyed calls, HD leakage model with
   precharge, masked pipeline TVLA for combine and verify, rng_wipe per entry point, tautology checks removed,

@@ -85,7 +85,7 @@ The program prints every number below at run time. The machine was an Intel i5-6
 | Masked check of 5 shares | 2.27 ms |
 | Masked reconstruct and unwrap | 0.38 ms |
 
-**Red team.** A separate harness (`attacks/redteam_v2.c`) attacks v2 directly. All five attacks failed, and a sixth check confirms the hiding property.
+**Red team.** A separate harness (`attacks/redteam_v2.c`) attacks v2 directly. All eight attacks failed, and a ninth check confirms the hiding property.
 
 - **v1 key-leak attack, ported to v2.** The ciphertext shows no small-noise structure.
 - **Hiding check.** For any candidate key there is a mask value that explains the public transcript, so the transcript rules out no key. The harness shows this on 100000 random candidates.
@@ -93,6 +93,9 @@ The program prints every number below at run time. The machine was an Intel i5-6
 - **Key-wrap forgery.** 0 of 713 bit flips and 0 of 300000 random tags were accepted.
 - **Mask reuse.** The masks differ on every run.
 - **Consistent share forgery.** The hash commitment rejects it.
+- **Birthday attack.** On a 20-bit cut of the hash, collisions came after 1278 hashes on average, matching the generic 1283.
+- **Nonce reuse.** A reused nonce leaks the message difference in 0 of 180000 words. A weak control leaks it in all of them.
+- **Keystream tests.** No test told the keystream from random (advantage at most 0.0019). A linear control is caught every time.
 
 Before the red team, three reviews (cryptanalysis, side channels, correctness) raised 19 findings. We fixed 18 and added a regression test for each. One of them was a stack overflow that a crafted transcript could trigger. The paper explains why we rejected the 19th.
 

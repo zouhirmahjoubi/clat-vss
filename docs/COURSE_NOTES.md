@@ -1,9 +1,10 @@
 # Course concept map for CLAT-VSS v2
 
-Two courses were requested:
+Three courses were requested:
 
 - Christof Paar, "Introduction to Cryptography" (27 lectures, Ruhr University Bochum).
 - Neso Academy, "Cryptography & Network Security" (83 videos).
+- Dan Boneh, "Cryptography I" (Stanford), part 1 as uploaded by Nerd's lesson (video `j_8PLI_wCVU`, 8 h 17 min, 31 chapters).
 
 ## How this was studied
 
@@ -12,12 +13,13 @@ The full lecture lists were fetched with `yt-dlp --flat-playlist` and are kept i
 The video transcripts could not be downloaded:
 
 - On 2026-10-26 YouTube's subtitle endpoint returned HTTP 429 (Too Many Requests) and the transcript API reported the IP as blocked.
-- On 2026-10-27 the subtitle endpoint returned 429 again. The transcript panel in a normal browser returned HTTP 400.
+- A second try on 2026-10-27 also returned 429. The transcript panel in a normal browser returned HTTP 400.
+- The Boneh video's subtitles returned 429 the same day. Its chapter list was read from the video description.
 - No rate-limit workaround was used.
 
 This map is therefore built from three sources:
 
-- lecture titles;
+- lecture and chapter titles;
 - chapter structure of the companion textbook (Paar, Pelzl, Gueneysu, *Understanding Cryptography*, 2nd ed.), which Paar's lectures follow;
 - standard content of each topic.
 
@@ -78,6 +80,27 @@ Column guide: **Use** = the concept is part of v2. **Defense** = v2 is built to 
 | 78-79 | PRNG, Golomb's postulates | **Attack.** v1 relied on Golomb-style statistics as evidence of security. **Defense.** v2 keeps them only as sanity checks and uses OS randomness. |
 | 80-83 | Chapter intros: PKC, hash and signatures, system security, web/email/IP security | Covered by Paar 11-27 above. |
 
+## Boneh, Cryptography I (part 1)
+
+Three chapters of this course became new red-team tests (A7, A8, A9 in `attacks/redteam_v2.c`). Each test has a control that the attack must break, so a pass shows the test can see a weakness. The numbers below come from `results/redteam_v2_run.txt`.
+
+| Chapters | Topic | Where it lands in CLAT-VSS v2 |
+|---|---|---|
+| 1-3 | Course overview, what cryptography is, history | **Use.** Same threat model as Paar 1: public design, secret key. |
+| 4-5 | Discrete probability: union bound, independence, birthday paradox | **Use.** Forgery and collision bounds in the paper are union bounds over adversary queries. |
+| 6 | Information-theoretic security, one-time pad | **Use.** T-1 Shamir shares reveal nothing about the KEK, which is perfect secrecy in Shannon's sense. **Test.** A2 shows 100000 of 100000 random KEKs fit the public transcript. |
+| 7 | Stream ciphers and PRGs | **Use.** The SIV keystream is a PRG keyed by the KEK and seeded by the tag. |
+| 8 | Attacks on stream ciphers: two-time pad, malleability | **Test (A8).** A fixed-IV control leaks m1 - m2 in 180000 of 180000 words. CLAT-SIV with a reused nonce leaks it in 0 of 180000, and equal messages give equal blobs 20000 of 20000 times. Nonce reuse leaks equality and nothing more. **Defense.** A4 shows the tag stops malleability: 0 of 713 bit flips accepted. |
+| 9 | Real-world stream ciphers (RC4, CSS, Salsa20) | **Attack.** RC4 and CSS fail through biased or linear state, the same flaw as v1's LFSR. v2 has no such state. |
+| 10-12 | PRG security, semantic security, stream ciphers are semantically secure | **Test (A9).** Over 200000 keystream samples, three tests (parity, half range, linear w1 = 7 w0) show advantage at most 0.0019 against a 4-sigma bound of 0.0089. The linear control reaches advantage 1.0000. This is a sanity check, not a proof. |
+| 14-19 | Block ciphers, DES, exhaustive search, more attacks, AES, block ciphers from PRGs | **Use.** CLAT-P is an SPN like AES. 256-bit keys rule out exhaustive search. The linear and differential attacks covered here are why v2 uses an MDS layer with branch number 17. |
+| 20 | PRPs and PRFs | **Use.** The sponge proof treats CLAT-P as a random permutation. The MAC and keystream are PRFs of the key. |
+| 21-24 | Modes: one-time key, many-time key, CBC, CTR | **Use.** Deterministic encryption cannot be CPA secure, so SIV states that a repeated (nonce, header, key) repeats the blob. A8 measures that exact leak. |
+| 25-27 | MACs, PRF-based MACs, CBC-MAC and NMAC | **Use.** The keyed sponge MAC is a PRF-based MAC. The final permutation and the fixed lengths in the IV do the job of NMAC's outer key. |
+| 28 | MAC padding | **Use.** Every input length is fixed and absorbed into the IV, so zero padding cannot create two messages with one tag. |
+| 29 | PMAC and the Carter-Wegman MAC | Not used. A one-time polynomial MAC would need a fresh key per message, and key wrap has no such key. |
+| 30-31 | Collision resistance, generic birthday attack | **Test (A7).** Truncating CLAT-H to 20 bits, the first collision came after 1278 hashes on average over 256 trials. The generic bound is sqrt(pi/2 * 2^20) = 1283, ratio 0.996. None of those collisions held on the full 279-bit digest. The full digest needs about 2^139.5 work. |
+
 ## Lessons applied, in one list
 
 1. A linear check is not a security check. The Hill cipher, LFSRs and v1's Ajtai and CRT checks all fail this way. v2 uses hash commitments.
@@ -86,3 +109,4 @@ Column guide: **Use** = the concept is part of v2. **Defense** = v2 is built to 
 4. Randomness must be fresh. A one-time pad, Elgamal nonces and masks fail when reused. v2 draws from the OS CSPRNG and wipes the buffer per operation.
 5. Constant time comes from code shape, not a claim. Use the ladder, and avoid `%`, `/` and branches on secrets. dudect measures the result.
 6. Statistics are not proofs. SAC, entropy and Golomb tests appear only as sanity checks.
+7. A test must show it can fail. A7, A8 and A9 each run a control that the attack breaks, so their passes mean something.

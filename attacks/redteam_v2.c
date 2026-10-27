@@ -249,6 +249,154 @@ static void A6_commitment_binding(void)
     if (!(gdiff == 0 && !valid)) fails++;
 }
 
+/* ---- A7: generic birthday attack on a truncated CLAT hash (Boneh) -------- *
+ * A hash with b output bits collides after about sqrt(pi/2 * 2^b) random
+ * inputs. We truncate the digest to B7_BITS bits, count hashes until the
+ * first collision over many trials, and compare the mean with that bound.
+ * A mean far below it would mean CLAT-H is weaker than generic. Each
+ * truncated collision is re-checked on the full 279-bit digest.             */
+#define B7_BITS   20
+#define B7_TRIALS 256
+static uint32_t b7_seen_trial[1u << B7_BITS];   /* trial id + 1 of the last writer */
+static uint32_t b7_seen_ctr[1u << B7_BITS];     /* counter of that input */
+
+static void b7_digest(uint32_t trial, uint32_t ctr, uint32_t dg[DIGEST_WORDS])
+{
+    uint32_t in[2] = { trial, ctr };
+    clat_hash(0x42444159u, in, 2, dg, DIGEST_WORDS);   /* "BDAY" tag, < q */
+}
+
+static void A7_birthday(void)
+{
+    const uint32_t mask = (1u << B7_BITS) - 1u;
+    double sum = 0;
+    size_t full_collisions = 0;
+    memset(b7_seen_trial, 0, sizeof b7_seen_trial);
+    for (uint32_t t = 0; t < B7_TRIALS; t++) {
+        for (uint32_t c = 0;; c++) {
+            uint32_t dg[DIGEST_WORDS], prev[DIGEST_WORDS];
+            b7_digest(t, c, dg);
+            uint32_t h = dg[0] & mask;
+            if (b7_seen_trial[h] == t + 1u) {
+                b7_digest(t, b7_seen_ctr[h], prev);
+                if (memcmp(dg, prev, sizeof dg) == 0) full_collisions++;
+                sum += (double)(c + 1u);
+                break;
+            }
+            b7_seen_trial[h] = t + 1u;
+            b7_seen_ctr[h] = c;
+        }
+    }
+    double mean = sum / B7_TRIALS;
+    double expect = sqrt(acos(-1.0) / 2.0 * (double)(1u << B7_BITS));
+    double ratio = mean / expect;
+    /* first-collision time has std ~0.52*mean; over 256 trials the standard
+       error is ~3.3%, so +-15% is a > 4 sigma window. */
+    int ok = ratio > 0.85 && ratio < 1.15 && full_collisions == 0;
+    printf("[A7] generic birthday on %d-bit truncated CLAT-H: mean hashes to "
+           "collision %.0f over %d trials (generic sqrt(pi/2*2^%d)=%.0f, ratio %.3f) ; "
+           "full 279-bit collisions %zu -> %s ; full digest needs ~2^%.1f work\n",
+           B7_BITS, mean, B7_TRIALS, B7_BITS, expect, ratio, full_collisions,
+           ok ? "matches generic bound (no shortcut)" : "SHORTCUT OR COLLISION",
+           (double)(DIGEST_WORDS * 31) / 2.0);
+    if (!ok) fails++;
+}
+
+/* ---- A8: two-time pad / nonce reuse (Boneh, attacks on the OTP) ---------- *
+ * A stream cipher that reuses its pad gives c1 - c2 = m1 - m2. The control
+ * reuses one keystream (fixed IV) and must leak exactly that. CLAT-SIV takes
+ * its keystream from the tag, so a reused nonce with different messages must
+ * not leak the difference; equal messages give equal blobs (the one stated
+ * leak of a deterministic mode).                                            */
+static void A8_two_time_pad(void)
+{
+    uint32_t kek[KEY_LIMBS], nonce[SIV_NONCE_WORDS], hdr[SIV_HDR_WORDS];
+    uint32_t m1[KEY_LIMBS], m2[KEY_LIMBS], ks[KEY_LIMBS], iv[SIV_TAG_WORDS];
+    uint8_t kb[KEY_BYTES];
+    clat_wrapped b1, b2, b3;
+    size_t trials = 20000, words = 0, siv_leak = 0, ctl_leak = 0, equal_same = 0;
+
+    hdr[0] = CLAT_VERSION_WORD; hdr[1] = 1; hdr[2] = 3; hdr[3] = 5;
+    for (size_t it = 0; it < trials; it++) {
+        os_random_bytes(kb, sizeof kb); key_to_limbs(kb, kek);
+        for (unsigned i = 0; i < SIV_NONCE_WORDS; i++) nonce[i] = rng_fq();
+        for (unsigned i = 0; i < KEY_LIMBS; i++) { m1[i] = rng_fq(); m2[i] = rng_fq(); }
+        if (clat_siv_wrap(kek, nonce, hdr, m1, &b1) != 0 ||
+            clat_siv_wrap(kek, nonce, hdr, m2, &b2) != 0 ||
+            clat_siv_wrap(kek, nonce, hdr, m1, &b3) != 0) continue;
+        equal_same += (memcmp(&b1, &b3, sizeof b1) == 0);
+
+        for (unsigned i = 0; i < SIV_TAG_WORDS; i++) iv[i] = nonce[i];   /* control: fixed IV */
+        siv_keystream(kek, iv, ks);
+        for (unsigned i = 0; i < KEY_LIMBS; i++) {
+            uint32_t dm = fq_sub(m1[i], m2[i]);
+            siv_leak += (fq_sub(b1.ct[i], b2.ct[i]) == dm);
+            ctl_leak += (fq_sub(fq_add(m1[i], ks[i]), fq_add(m2[i], ks[i])) == dm);
+            words++;
+        }
+    }
+    int ok = siv_leak == 0 && ctl_leak == words && equal_same == trials;
+    printf("[A8] two-time pad: fixed-IV control leaks m1-m2 in %zu/%zu words ; "
+           "CLAT-SIV with reused nonce leaks it in %zu/%zu (random ~%.1e) ; "
+           "equal messages give equal blobs %zu/%zu -> %s\n",
+           ctl_leak, words, siv_leak, words, (double)words / (double)FQ_Q,
+           equal_same, trials,
+           ok ? "nonce reuse leaks equality only" : "PAD REUSE LEAK");
+    if (!ok) fails++;
+}
+
+/* ---- A9: PRG distinguishing advantage (Boneh, PRG security) -------------- *
+ * A PRG is secure when no efficient test A has a noticeable advantage
+ * |Pr[A(G(k)) = 1] - Pr[A(r) = 1]|. We run three cheap tests on the SIV
+ * keystream and on OS randomness. The control is a linear generator
+ * w1 = 7*w0, which the linear test detects with advantage ~1. A small
+ * advantage is a sanity check, not a proof of PRG security.                 */
+static unsigned a9_tests(const uint32_t w[2])
+{
+    unsigned r = 0;
+    r |= (((w[0] ^ w[1]) & 1u) == 0) << 0;           /* low-bit parity */
+    r |= (w[0] < FQ_Q / 2u) << 1;                     /* half-range */
+    r |= (w[1] == fq_mul(7u, w[0])) << 2;             /* linear relation */
+    return r;
+}
+
+static void A9_prg_advantage(void)
+{
+    const size_t n = 200000;
+    size_t cnt_ks[3] = {0}, cnt_rnd[3] = {0}, cnt_lin[3] = {0};
+    uint32_t key[KEY_LIMBS], tag[SIV_TAG_WORDS], ks[KEY_LIMBS], w[2];
+    uint8_t kb[KEY_BYTES];
+    os_random_bytes(kb, sizeof kb); key_to_limbs(kb, key);
+    for (unsigned i = 0; i < SIV_TAG_WORDS; i++) tag[i] = rng_fq();
+    for (size_t it = 0; it < n; it++) {
+        tag[0] = (uint32_t)it;                         /* distinct IVs, one key */
+        siv_keystream(key, tag, ks);
+        unsigned a = a9_tests(ks);
+        w[0] = rng_fq(); w[1] = rng_fq();
+        unsigned b = a9_tests(w);
+        w[1] = fq_mul(7u, w[0]);
+        unsigned c = a9_tests(w);
+        for (int k = 0; k < 3; k++) {
+            cnt_ks[k] += (a >> k) & 1u;
+            cnt_rnd[k] += (b >> k) & 1u;
+            cnt_lin[k] += (c >> k) & 1u;
+        }
+    }
+    double adv[3], ctl_lin = fabs((double)cnt_lin[2] - (double)cnt_rnd[2]) / (double)n;
+    double bound = 4.0 / sqrt((double)n);              /* ~4 sigma for p = 1/2 */
+    int ok = ctl_lin > 0.99;
+    for (int k = 0; k < 3; k++) {
+        adv[k] = fabs((double)cnt_ks[k] - (double)cnt_rnd[k]) / (double)n;
+        ok &= adv[k] < bound;
+    }
+    printf("[A9] PRG advantage of SIV keystream over %zu samples: parity %.4f ; "
+           "half-range %.4f ; linear w1=7*w0 %.4f (bound %.4f) ; linear control "
+           "advantage %.4f -> %s\n",
+           n, adv[0], adv[1], adv[2], bound, ctl_lin,
+           ok ? "no test distinguishes (sanity, not proof)" : "DISTINGUISHER FOUND");
+    if (!ok) fails++;
+}
+
 int main(void)
 {
     clat_init();
@@ -258,6 +406,9 @@ int main(void)
     A3_integral();
     A6_commitment_binding();
     A5_randomness();
+    A8_two_time_pad();
+    A9_prg_advantage();
+    A7_birthday();
     A4_siv_forgery();      /* heaviest, run last */
     printf("\n== red-team summary: %d attack(s) succeeded ==\n", fails);
     return fails ? 1 : 0;

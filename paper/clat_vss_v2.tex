@@ -46,7 +46,7 @@ CLAT-VSS is a threshold key vault. A master key (MK) is wrapped under a key-encr
 
 Version 2 removes every one of these components and rebuilds the vault on one public object: \emph{CLAT-P}, a 24-round, full-round substitution-permutation network on $\Fq^{16}$ with $q = 2^{31}-1$, the S-box $x^5$, and a $16\times16$ Cauchy MDS matrix. A sponge over CLAT-P provides hashing, commitments, Fiat-Shamir challenges and a deterministic authenticated key wrap (CLAT-SIV). The VSS uses only hash commitments, so it needs no discrete-log assumption, and its soundness error is $q^{-5} \approx 2^{-155}$ per challenge query. The combiner runs end to end on 2-share arithmetic masking with ISW multiplication and OS randomness.
 
-The single-file C11 implementation (2792 lines, no dependencies beyond the C standard library, with \code{libm} for test statistics, and the OS random source) passes 38 of 38 functional checks and 7 of 7 statistical tests on Windows, Linux and macOS (arm64), and runs with no report under AddressSanitizer and UndefinedBehaviorSanitizer. These include the dudect timing test (max $\abs{t} = 1.71$ for CLAT-P and $0.49$ for the masked unwrap), a simulated-leakage TVLA in value and transition models (0 leaking samples on the masked paths, 7170 on the unmasked control), and degree-growth tests that reproduce the integral property on reduced rounds and show why it fails at full rounds. A separate red-team harness ran five attacks and one hiding check against v2; no attack succeeded. Every experimental number in this paper is produced by the shipped code; the v1 breaks and the security bounds are derived analytically.
+The single-file C11 implementation (2792 lines, no dependencies beyond the C standard library, with \code{libm} for test statistics, and the OS random source) passes 38 of 38 functional checks and 7 of 7 statistical tests on Windows, Linux and macOS (arm64), and runs with no report under AddressSanitizer and UndefinedBehaviorSanitizer. These include the dudect timing test (max $\abs{t} = 1.71$ for CLAT-P and $0.49$ for the masked unwrap), a simulated-leakage TVLA in value and transition models (0 leaking samples on the masked paths, 7170 on the unmasked control), and degree-growth tests that reproduce the integral property on reduced rounds and show why it fails at full rounds. A separate red-team harness ran eight attacks and one hiding check against v2; no attack succeeded. Every experimental number in this paper is produced by the shipped code; the v1 breaks and the security bounds are derived analytically.
 \end{abstract}
 
 \begin{center}\small
@@ -431,21 +431,24 @@ These statistics would catch a gross implementation error. They say nothing abou
 
 \section{Red-team results}\label{sec:redteam}
 
-A separate harness, \code{attacks/redteam\_v2.c}, includes the v2 source and attacks its internal functions directly. Results are in \code{results/redteam\_v2\_run.txt}. None of the five attacks (A1, A3 to A6) succeeded; A2 is a hiding check that cannot fail.
+A separate harness, \code{attacks/redteam\_v2.c}, includes the v2 source and attacks its internal functions directly. Results are in \code{results/redteam\_v2\_run.txt}. None of the eight attacks (A1, A3 to A9) succeeded; A2 is a hiding check that cannot fail. A7 to A9 follow Boneh's \emph{Cryptography I}~\cite{boneh}, and each runs a weak control that the attack must break.
 \begin{enumerate}[label=A\arabic*]
-  \item \emph{Port of the v1 LWE leak.} Over 180000 ciphertext words, the mean distance to the nearest multiple of $2^{15}$ is 8200.8 (uniform: 8192), and $\Pr[\text{distance} \le 4] = 2.83\times10^{-4}$ (uniform: $2.75\times10^{-4}$). No small-error structure remains.
+  \item \emph{Port of the v1 LWE leak.} Over 180000 ciphertext words, the mean distance to the nearest multiple of $2^{15}$ is 8184.7 (uniform: 8192), and $\Pr[\text{distance} \le 4] = 2.94\times10^{-4}$ (uniform: $2.75\times10^{-4}$). No small-error structure remains.
   \item \emph{KEK from the transcript (hiding check, not an attack).} For any candidate KEK $s$, $r_k(0) = g_k(0) - \sum_l d_{k,l} s_l$ is a valid masking constant, so the transcript alone rules out no KEK (Theorem~\ref{thm:hide}). The harness illustrates this on 100000 random candidates; the count follows from the argument and is not a measurement.
   \item \emph{Integral distinguisher.} The relation holds at $R=2$, $d=31$ and at $R=3$, $d=151$, and fails in the controls at $R=3$, $d=31$ and $R=4$, $d=151$. At $R = 24$ no subgroup qualifies.
   \item \emph{SIV forgery.} 0 of 713 single-bit flips across nonce, ciphertext and tag were accepted, and 0 of 300000 random forgeries.
   \item \emph{Mask and salt reuse.} Salts differ across deals. The same share masked twice gives different splits that unmask to the same value.
   \item \emph{Consistent share forgery.} The forgery passes every $g$-check and fails the commitment.
+  \item \emph{Generic birthday attack.} With CLAT-H truncated to 20 bits, the first collision came after 1278 hashes on average over 256 trials, against the generic $\sqrt{\pi/2 \cdot 2^{20}} = 1283$ (ratio 0.996). None held on the full 279-bit digest, which needs about $2^{139.5}$ work.
+  \item \emph{Two-time pad.} A fixed-IV control leaks $m_1 - m_2$ in 180000 of 180000 words. CLAT-SIV with a reused nonce leaks it in 0 of 180000; equal messages give equal blobs in 20000 of 20000 cases, the stated leak of a deterministic mode.
+  \item \emph{PRG distinguishing advantage.} Over 200000 keystream samples, parity, half-range and linear ($w_1 = 7 w_0$) tests reach advantage at most 0.0019, under the 4-sigma bound 0.0089. The linear control reaches 1.0000. This is a sanity check, not a proof.
 \end{enumerate}
 
 Before the red team ran, three independent reviews (cryptanalysis, side channels, correctness) produced 19 findings. 18 were fixed; the code-level fixes (transcript checks, header binding, blame by slot, index and key ranges, stack burn) have regression checks in Tests 2 and 3. One was rejected: the claim that the shared KEK should be provably bound to the blob. A dealer can always wrap garbage, and a wrong KEK is caught by the SIV tag at unwrap time.
 
 \section{Course concept map}\label{sec:course}
 
-The design was checked against two courses: Paar's 27-lecture \emph{Introduction to Cryptography}~\cite{paarlectures,paarbook} and Neso Academy's 83-video \emph{Cryptography \& Network Security}~\cite{neso}. Table~\ref{tab:course} lists the concepts that changed the design. The full lecture-by-lecture map is in \code{docs/COURSE\_NOTES.md}.
+The design was checked against three courses: Paar's 27-lecture \emph{Introduction to Cryptography}~\cite{paarlectures,paarbook}, Neso Academy's 83-video \emph{Cryptography \& Network Security}~\cite{neso}, and part 1 of Boneh's \emph{Cryptography I}~\cite{boneh}. Table~\ref{tab:course} lists the concepts that changed the design. The full lecture-by-lecture map is in \code{docs/COURSE\_NOTES.md}.
 
 \begin{table}[t]
 \centering\small
@@ -469,6 +472,9 @@ MAC, HMAC & keyed hashing, constant-time compare & keyed sponge MAC; wipe on fai
 Key establishment & key-encryption keys, key hierarchy & MK under KEK, KEK split $T$-of-$N$ \\
 PKI, man in the middle & authenticated public data & broadcast assumption; header binds $T$ and $N$ \\
 PRNG, Golomb postulates & statistics are not security & sanity tests labelled as such \\
+Two-time pad (Boneh) & a reused pad leaks $m_1 - m_2$ & keystream keyed by the tag; A8 \\
+PRG security (Boneh) & no efficient test has noticeable advantage & A9, with a linear control \\
+Generic birthday attack (Boneh) & collisions after about $2^{b/2}$ hashes & A7 matches the bound at 20 bits \\
 \bottomrule
 \end{tabularx}
 \caption{Course concepts that shaped v2.}\label{tab:course}
@@ -489,6 +495,7 @@ PRNG, Golomb postulates & statistics are not security & sanity tests labelled as
 Breaking our own first version taught us more than any test it had passed: six of its nine breaks (B1 to B4, B7, B9) came from a structure that was too small or linear. Version 2 uses one permutation with an 8-round margin over the integral bound of Section~\ref{sec:roundcount}, a VSS whose security reduces to hashing, and a combiner that never holds the KEK or the MK unmasked. The code measures every claim it makes, and the red team found no break.
 
 \begin{thebibliography}{99}\small\raggedright
+\bibitem{boneh} D.~Boneh. Cryptography I (Stanford University), part 1. YouTube upload by Nerd's lesson, video j\_8PLI\_wCVU.
 \bibitem{abcp23} S.~Atapoor, K.~Baghery, D.~Cozzo, R.~Pedersen. VSS from distributed ZK proofs and applications. ASIACRYPT 2023. ePrint 2023/992.
 \bibitem{keyedsponge} E.~Andreeva, J.~Daemen, B.~Mennink, G.~Van~Assche. Security of keyed sponge constructions using a modular proof approach. FSE 2015.
 \bibitem{sni} G.~Barthe, S.~Bela\"id, F.~Dupressoir, P.-A.~Fouque, B.~Gr\'egoire, P.-Y.~Strub, R.~Zucchini. Strong non-interference and type-directed higher-order masking. ACM CCS 2016.
